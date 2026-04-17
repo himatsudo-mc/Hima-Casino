@@ -1,0 +1,20 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "minecraft:item/paper"
+  },
+  "overrides": [
+    { "predicate": { "custom_model_data": 1  }, "model": "himacasino:item/slot_number_1"  },
+    { "predicate": { "custom_model_data": 2  }, "model": "himacasino:item/slot_number_2"  },
+    { "predicate": { "custom_model_data": 3  }, "model": "himacasino:item/slot_number_3"  },
+    { "predicate": { "custom_model_data": 4  }, "model": "himacasino:item/slot_number_4"  },
+    { "predicate": { "custom_model_data": 5  }, "model": "himacasino:item/slot_number_5"  },
+    { "predicate": { "custom_model_data": 6  }, "model": "himacasino:item/slot_number_6"  },
+    { "predicate": { "custom_model_data": 7  }, "model": "himacasino:item/slot_number_7"  },
+    { "predicate": { "custom_model_data": 10 }, "model": "himacasino:item/slot_frame_0"   },
+    { "predicate": { "custom_model_data": 11 }, "model": "himacasino:item/slot_frame_1"   },
+    { "predicate": { "custom_model_data": 12 }, "model": "himacasino:item/slot_frame_2"   },
+    { "predicate": { "custom_model_data": 20 }, "model": "himacasino:item/roulette_wheel" },
+    { "predicate": { "custom_model_data": 21 }, "model": "himacasino:item/roulette_ball"  }
+  ]
+}
