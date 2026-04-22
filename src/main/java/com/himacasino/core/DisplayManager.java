@@ -9,6 +9,7 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.*;
@@ -83,11 +84,12 @@ public class DisplayManager {
         display.setInterpolationDelay(0);
         display.setInterpolationDuration(interpolationTicks);
         Transformation prev = display.getTransformation();
+        // getLeftRotation() returns Quaternionf; right rotation must also be Quaternionf
         display.setTransformation(new Transformation(
                 prev.getTranslation(),
                 prev.getLeftRotation(),
                 prev.getScale(),
-                new AxisAngle4f(angle, 0, 1, 0)
+                new Quaternionf().rotationY(angle)
         ));
     }
 
