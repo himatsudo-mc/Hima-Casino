@@ -6,9 +6,9 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
-import org.bukkit.entity.Player;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -18,53 +18,66 @@ import org.joml.Vector3f;
 
 import java.util.*;
 
+/**
+ * Roulette game with a realistic wheel visual.
+ *
+ * Visuals (Display Entities):
+ *  ┌── Center spinning disk (1 ItemDisplay, rotates via setTransformation)
+ *  ├── 37 pocket ItemDisplays arranged in a static ring (colored concrete)
+ *  ├── 37 TextDisplays showing pocket numbers (static, same positions)
+ *  └── 1 ball ItemDisplay (teleports every tick along a spiral path)
+ */
 public class RouletteGame extends GameBase {
 
-    // European roulette wheel order (clockwise from 0)
-    private static final int[] WHEEL_ORDER = {
+    // European roulette wheel order (clockwise)
+    static final int[] WHEEL_ORDER = {
         0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,
         24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26
     };
-    private static final int POCKET_COUNT = WHEEL_ORDER.length;
+    private static final int POCKET_COUNT = WHEEL_ORDER.length; // 37
 
-    private static final int[] RED_NUMBERS = {
+    static final int[] RED_NUMBERS = {
         1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36
     };
 
-    // Angle (radians) of each pocket on the wheel
+    // Pre-computed angle for each pocket index (radians, starting at angle 0)
     private static final double[] POCKET_ANGLES = new double[POCKET_COUNT];
     static {
-        for (int i = 0; i < POCKET_COUNT; i++) {
+        for (int i = 0; i < POCKET_COUNT; i++)
             POCKET_ANGLES[i] = (2 * Math.PI / POCKET_COUNT) * i;
-        }
     }
+
+    // Visual dimensions
+    private static final float POCKET_RADIUS    = 1.35f; // ring radius (blocks)
+    private static final float CENTER_DISK_SCALE = 1.1f;  // half-size of center disk
+    private static final float BALL_RADIUS_MAX   = 1.6f;
+    private static final float BALL_RADIUS_MIN   = POCKET_RADIUS - 0.05f;
+    private static final float POCKET_SCALE      = 0.28f; // size of each pocket block
+
+    // Spin parameters
+    private static final float WHEEL_OMEGA_0 = 0.18f;   // initial wheel angular velocity (rad/tick)
+    private static final float BALL_OMEGA_0  = -0.40f;  // ball (opposite direction)
 
     private final UUID gameId;
     private final Location tableCenter;
     private final int spinTicks;
 
-    // Active bets: number bets (0-36) and color bets ("red"/"black")
+    // Bets
     final Map<Integer, Double> numberBets = new HashMap<>();
-    final Map<String, Double> colorBets = new HashMap<>();
+    final Map<String, Double>  colorBets  = new HashMap<>();
     double totalBet = 0;
 
     // Display entities
-    private ItemDisplay wheelDisplay;
+    private ItemDisplay centerDisk;
     private ItemDisplay ballDisplay;
-    private TextDisplay resultDisplay;
+    private final ItemDisplay[] pocketDisplays = new ItemDisplay[POCKET_COUNT];
+    private final TextDisplay[]  numberDisplays  = new TextDisplay[POCKET_COUNT];
 
     // Animation state
     private int tick = 0;
     private float wheelAngle = 0f;
-    private float ballAngle = 0f;
+    private float ballAngle  = 0f;
     private int winningNumber = -1;
-
-    // Initial angular velocities (rad/tick)
-    private static final float WHEEL_OMEGA_0 = 0.18f;  // wheel
-    private static final float BALL_OMEGA_0  = -0.35f; // ball (opposite direction)
-    private static final float WHEEL_RADIUS  = 1.8f;
-    private static final float BALL_RADIUS_MAX = 1.6f;
-    private static final float BALL_RADIUS_MIN = 0.4f;
 
     public RouletteGame(HimaCasino plugin, Player player, Location tableCenter) {
         super(plugin, player, 0);
@@ -80,7 +93,7 @@ public class RouletteGame extends GameBase {
         if (!chargeAmount(amount)) return false;
         numberBets.merge(number, amount, Double::sum);
         totalBet += amount;
-        player.sendMessage(String.format("§7数字 §e%d §7に §6%.0f %s §7をベット",
+        player.sendMessage(String.format("§7Bet §e%d §7→ §6%.0f %s",
                 number, amount, plugin.getConfigLoader().getCurrencySymbol()));
         return true;
     }
@@ -90,8 +103,8 @@ public class RouletteGame extends GameBase {
         if (!chargeAmount(amount)) return false;
         colorBets.merge(color, amount, Double::sum);
         totalBet += amount;
-        String label = color.equals("red") ? "§c赤" : "§8黒";
-        player.sendMessage(String.format("§7%s §7に §6%.0f %s §7をベット",
+        String label = color.equals("red") ? "§cRED" : "§8BLACK";
+        player.sendMessage(String.format("§7Bet %s §7→ §6%.0f %s",
                 label, amount, plugin.getConfigLoader().getCurrencySymbol()));
         return true;
     }
@@ -99,7 +112,7 @@ public class RouletteGame extends GameBase {
     private boolean chargeAmount(double amount) {
         var eco = plugin.getEconomyManager();
         if (eco.isEnabled() && eco.getBalance(player) < amount) {
-            player.sendMessage("§c残高が不足しています。");
+            player.sendMessage("§cInsufficient balance!");
             return false;
         }
         if (eco.isEnabled()) eco.withdraw(player, amount);
@@ -107,125 +120,145 @@ public class RouletteGame extends GameBase {
     }
 
     public double getTotalBet() { return totalBet; }
+    public boolean hasAnyBet()  { return totalBet > 0; }
 
     // ── Game lifecycle ─────────────────────────────────────────────────────
 
     @Override
     public void onStart() {
         if (totalBet <= 0) {
-            player.sendMessage("§cまずベットしてください。 §7(/casino roulette <数字|red|black> <金額>)");
+            player.sendMessage("§cPlace a bet first!  §7(/casino roulette <number|red|black> <amount>)");
             return;
         }
         betAmount = totalBet;
         state = GameState.RUNNING;
 
-        // Pre-determine winning number
         winningNumber = WHEEL_ORDER[new Random().nextInt(POCKET_COUNT)];
-
         spawnDisplays();
 
-        player.sendMessage("§6§l╔══════════════════╗");
-        player.sendMessage("§6§l║  ルーレット スピン  §6§l║");
-        player.sendMessage("§6§l╚══════════════════╝");
+        player.sendMessage("§6§l╔══════════════════════╗");
+        player.sendMessage("§6§l║    ROULETTE SPIN      ║");
+        player.sendMessage("§6§l╚══════════════════════╝");
         tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_WOODEN_BUTTON_CLICK_ON, 1f, 0.8f);
 
         tick = 0;
         startTickTask(1L);
     }
 
-    private void spawnDisplays() {
-        // Wheel – flat disk (FIXED billboard, tipped 90° around X to lie horizontal)
-        ItemStack wheelItem = new ItemStack(Material.PAPER);
-        ItemMeta wm = wheelItem.getItemMeta();
-        wm.setCustomModelData(20); // resource pack: roulette_wheel model
-        wheelItem.setItemMeta(wm);
+    // ── Visual spawn ───────────────────────────────────────────────────────
 
-        wheelDisplay = tableCenter.getWorld().spawn(tableCenter.clone().add(0, 0.1, 0), ItemDisplay.class, d -> {
-            d.setItemStack(wheelItem);
+    private void spawnDisplays() {
+        // 1. Center spinning disk (dark oak log tipped flat)
+        ItemStack diskItem = new ItemStack(Material.DARK_OAK_LOG);
+        centerDisk = tableCenter.getWorld().spawn(tableCenter.clone().add(0, 0.05, 0), ItemDisplay.class, d -> {
+            d.setItemStack(diskItem);
             d.setBillboard(Display.Billboard.FIXED);
             d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-            // Lay flat: left rotation = 90° around X
+            // Lay flat by tilting 90° around X, then start spin angle 0
             d.setTransformation(new Transformation(
                     new Vector3f(0, 0, 0),
                     new AxisAngle4f((float)(Math.PI / 2), 1, 0, 0),
-                    new Vector3f(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_RADIUS),
-                    new AxisAngle4f(0, 0, 1, 0)
-            ));
+                    new Vector3f(CENTER_DISK_SCALE, CENTER_DISK_SCALE, CENTER_DISK_SCALE),
+                    new AxisAngle4f(0, 0, 0, 1)));
             d.setInterpolationDuration(2);
         });
-        plugin.getDisplayManager().trackDisplay(gameId, wheelDisplay);
+        plugin.getDisplayManager().trackDisplay(gameId, centerDisk);
 
-        // Ball – small sphere orbiting the wheel
-        ItemStack ballItem = new ItemStack(Material.PAPER);
+        // 2. Pocket ring (37 colored blocks + number labels)
+        for (int i = 0; i < POCKET_COUNT; i++) {
+            int number = WHEEL_ORDER[i];
+            double angle = POCKET_ANGLES[i];
+            double px = Math.cos(angle) * POCKET_RADIUS;
+            double pz = Math.sin(angle) * POCKET_RADIUS;
+            Location pLoc = tableCenter.clone().add(px, 0.06, pz);
+
+            // Colored block
+            Material mat = pocketMaterial(number);
+            ItemStack pocketItem = new ItemStack(mat);
+            final int idx = i;
+            pocketDisplays[i] = tableCenter.getWorld().spawn(pLoc, ItemDisplay.class, d -> {
+                d.setItemStack(pocketItem);
+                d.setBillboard(Display.Billboard.FIXED);
+                d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+                d.setTransformation(new Transformation(
+                        new Vector3f(0, 0, 0),
+                        new AxisAngle4f((float)(Math.PI / 2), 1, 0, 0),
+                        new Vector3f(POCKET_SCALE, POCKET_SCALE, POCKET_SCALE),
+                        new AxisAngle4f(0, 0, 0, 1)));
+            });
+            plugin.getDisplayManager().trackDisplay(gameId, pocketDisplays[i]);
+
+            // Number label (above the block)
+            String color = number == 0 ? "§a" : (isRed(number) ? "§c" : "§8");
+            Location nLoc = tableCenter.clone().add(px, 0.22, pz);
+            numberDisplays[i] = plugin.getDisplayManager().spawnTextDisplay(
+                    nLoc, color + "§l" + number, 0.4f);
+            numberDisplays[i].setBillboard(Display.Billboard.FIXED);
+            plugin.getDisplayManager().trackDisplay(gameId, numberDisplays[i]);
+        }
+
+        // 3. Ball (starts at outer edge)
+        ItemStack ballItem = new ItemStack(Material.SNOWBALL);
         ItemMeta bm = ballItem.getItemMeta();
-        bm.setCustomModelData(21); // resource pack: roulette_ball model
+        bm.setCustomModelData(21);
         ballItem.setItemMeta(bm);
-
-        Location ballStartLoc = tableCenter.clone().add(BALL_RADIUS_MAX, 0.15, 0);
-        ballDisplay = tableCenter.getWorld().spawn(ballStartLoc, ItemDisplay.class, d -> {
+        ballDisplay = tableCenter.getWorld().spawn(
+                tableCenter.clone().add(BALL_RADIUS_MAX, 0.15, 0), ItemDisplay.class, d -> {
             d.setItemStack(ballItem);
             d.setBillboard(Display.Billboard.CENTER);
-            d.setTransformation(new Transformation(
-                    new Vector3f(0, 0, 0),
-                    new AxisAngle4f(0, 0, 1, 0),
-                    new Vector3f(0.15f, 0.15f, 0.15f),
-                    new AxisAngle4f(0, 0, 1, 0)
-            ));
+            d.setTransformation(new Transformation(new Vector3f(), new AxisAngle4f(0,0,1,0),
+                    new Vector3f(0.13f, 0.13f, 0.13f), new AxisAngle4f(0,0,1,0)));
         });
         plugin.getDisplayManager().trackDisplay(gameId, ballDisplay);
-
-        // Result text display (hidden until end)
-        resultDisplay = plugin.getDisplayManager().spawnTextDisplay(
-                tableCenter.clone().add(0, 1.5, 0), "", 1.5f);
-        plugin.getDisplayManager().trackDisplay(gameId, resultDisplay);
     }
+
+    private static Material pocketMaterial(int number) {
+        if (number == 0) return Material.LIME_CONCRETE;
+        return isRed(number) ? Material.RED_CONCRETE : Material.BLACK_CONCRETE;
+    }
+
+    // ── Tick (animation) ───────────────────────────────────────────────────
 
     @Override
     public void onTick() {
         tick++;
-        float progress = (float) tick / spinTicks;
-        if (progress > 1f) progress = 1f;
+        float progress = Math.min(1f, (float) tick / spinTicks);
 
-        // Ease-out deceleration: speed = omega_0 * (1 - progress)^2
+        // Ease-out deceleration
         float wheelOmega = WHEEL_OMEGA_0 * (1f - progress) * (1f - progress);
         float ballOmega  = BALL_OMEGA_0  * (1f - progress * 0.8f);
 
         wheelAngle += wheelOmega;
         ballAngle  += ballOmega;
 
-        // Update wheel rotation (right rotation = spin around Z in flat-down space)
-        if (wheelDisplay != null && wheelDisplay.isValid()) {
-            wheelDisplay.setInterpolationDelay(0);
-            wheelDisplay.setInterpolationDuration(2);
-            wheelDisplay.setTransformation(new Transformation(
+        // Spinning center disk (setTransformation → client-side interpolation)
+        if (centerDisk != null && centerDisk.isValid()) {
+            centerDisk.setInterpolationDelay(0);
+            centerDisk.setInterpolationDuration(2);
+            centerDisk.setTransformation(new Transformation(
                     new Vector3f(0, 0, 0),
                     new AxisAngle4f((float)(Math.PI / 2), 1, 0, 0),
-                    new Vector3f(WHEEL_RADIUS, WHEEL_RADIUS, WHEEL_RADIUS),
-                    new AxisAngle4f(wheelAngle, 0, 0, 1)
-            ));
+                    new Vector3f(CENTER_DISK_SCALE, CENTER_DISK_SCALE, CENTER_DISK_SCALE),
+                    new AxisAngle4f(wheelAngle, 0, 0, 1)));
         }
 
-        // Ball spiral: radius decreases as progress increases
-        float ballRadius = BALL_RADIUS_MAX - (BALL_RADIUS_MAX - BALL_RADIUS_MIN) * progress;
-        float ballHeight = 0.15f - 0.1f * progress; // gradually drops into pocket
-
-        double bx = Math.cos(ballAngle) * ballRadius;
-        double bz = Math.sin(ballAngle) * ballRadius;
+        // Ball spiral
+        float radius = BALL_RADIUS_MAX - (BALL_RADIUS_MAX - BALL_RADIUS_MIN) * progress;
+        float height = 0.15f - 0.10f * progress;
+        double bx = Math.cos(ballAngle) * radius;
+        double bz = Math.sin(ballAngle) * radius;
         if (ballDisplay != null && ballDisplay.isValid()) {
-            ballDisplay.teleport(tableCenter.clone().add(bx, ballHeight, bz));
+            ballDisplay.teleport(tableCenter.clone().add(bx, height, bz));
         }
 
-        // Ball bounce sound (frequency decreases as ball slows)
+        // Sounds
         int bounceInterval = Math.max(2, (int)(3 + progress * 12));
         if (tick % bounceInterval == 0 && progress < 0.95f) {
-            float pitch = 1.8f - progress;
-            tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_STONE_HIT,
-                    0.25f, pitch);
+            tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_STONE_HIT, 0.25f, 1.8f - progress);
         }
-        // Wheel whir sound
-        if (tick % 8 == 0 && progress < 0.9f) {
-            tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_WOODEN_BUTTON_CLICK_ON,
-                    0.15f, 0.9f + (1f - progress) * 0.3f);
+        if (tick % 10 == 0 && progress < 0.9f) {
+            tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_WOODEN_BUTTON_CLICK_ON, 0.12f,
+                    0.8f + (1f - progress) * 0.3f);
         }
 
         if (tick >= spinTicks) {
@@ -235,54 +268,49 @@ public class RouletteGame extends GameBase {
     }
 
     private void finalizeSpin() {
-        // Snap ball to correct pocket position on the wheel
-        int pocketIndex = getPocketIndex(winningNumber);
-        double finalAngle = POCKET_ANGLES[pocketIndex];
-        double fx = Math.cos(finalAngle) * (BALL_RADIUS_MIN + 0.05);
-        double fz = Math.sin(finalAngle) * (BALL_RADIUS_MIN + 0.05);
-        if (ballDisplay != null && ballDisplay.isValid()) {
-            ballDisplay.teleport(tableCenter.clone().add(fx, 0.05, fz));
+        // Snap ball to winning pocket
+        int pocketIdx = getPocketIndex(winningNumber);
+        double winAngle = POCKET_ANGLES[pocketIdx];
+        double fx = Math.cos(winAngle) * (BALL_RADIUS_MIN - 0.02);
+        double fz = Math.sin(winAngle) * (BALL_RADIUS_MIN - 0.02);
+        if (ballDisplay != null && ballDisplay.isValid())
+            ballDisplay.teleport(tableCenter.clone().add(fx, 0.08, fz));
+
+        // Highlight winning pocket
+        if (pocketDisplays[pocketIdx] != null && pocketDisplays[pocketIdx].isValid()) {
+            pocketDisplays[pocketIdx].setTransformation(new Transformation(
+                    new Vector3f(0, 0, 0),
+                    new AxisAngle4f((float)(Math.PI / 2), 1, 0, 0),
+                    new Vector3f(POCKET_SCALE * 1.5f, POCKET_SCALE * 1.5f, POCKET_SCALE * 1.5f),
+                    new AxisAngle4f(0, 0, 0, 1)));
         }
 
-        // Play landing sounds
+        // Sounds
         tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_STONE_PLACE, 1f, 1.2f);
         tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_NOTE_BLOCK_BELL, 0.6f, 0.9f);
 
-        // Show result
+        // Announce
         boolean red = isRed(winningNumber);
-        String color = (winningNumber == 0) ? "§a" : (red ? "§c" : "§8");
-        String colorLabel = (winningNumber == 0) ? "§a(グリーン)" : (red ? "§c(レッド)" : "§8(ブラック)");
-        if (resultDisplay != null && resultDisplay.isValid()) {
-            resultDisplay.setText(String.format("§l%s%d\n§7%s", color, winningNumber, colorLabel));
-        }
-
-        player.sendMessage(String.format("§6§lボールが入ったポケット: %s§l%d %s",
-                color, winningNumber, colorLabel));
+        String col = winningNumber == 0 ? "§a" : (red ? "§c" : "§8");
+        String colLabel = winningNumber == 0 ? "§a(GREEN)" : (red ? "§c(RED)" : "§8(BLACK)");
+        player.sendMessage(String.format("§6§lBall landed on: %s§l%d %s", col, winningNumber, colLabel));
 
         // Evaluate bets
         double winnings = 0;
-        for (var e : numberBets.entrySet()) {
+        for (var e : numberBets.entrySet())
             if (e.getKey() == winningNumber) winnings += e.getValue() * 36; // 35:1 + stake
-        }
         for (var e : colorBets.entrySet()) {
             boolean betRed = e.getKey().equals("red");
-            if (winningNumber != 0 && (betRed == red)) {
-                winnings += e.getValue() * 2; // 1:1 + stake
-            }
+            if (winningNumber != 0 && (betRed == red)) winnings += e.getValue() * 2; // 1:1 + stake
         }
 
-        if (winnings > 0) {
-            double mult = winnings / betAmount;
-            onWin(mult);
-        } else {
-            onLoss();
-        }
+        if (winnings > 0) onWin(winnings / betAmount);
+        else onLoss();
     }
 
     private int getPocketIndex(int number) {
-        for (int i = 0; i < WHEEL_ORDER.length; i++) {
+        for (int i = 0; i < WHEEL_ORDER.length; i++)
             if (WHEEL_ORDER[i] == number) return i;
-        }
         return 0;
     }
 
@@ -291,6 +319,8 @@ public class RouletteGame extends GameBase {
         return false;
     }
 
+    // ── Win / Loss ─────────────────────────────────────────────────────────
+
     @Override
     public void onWin(double multiplier) {
         state = GameState.WIN;
@@ -298,16 +328,16 @@ public class RouletteGame extends GameBase {
         tableCenter.getWorld().playSound(tableCenter, Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
         tableCenter.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                 tableCenter.clone().add(0, 1.5, 0), 50, 1.2, 0.5, 1.2, 0);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 120L);
+        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 140L);
     }
 
     @Override
     public void onLoss() {
         state = GameState.LOSS;
-        player.sendMessage(String.format("§c残念！ §7合計 §e%.0f %s §7を失いました。",
+        player.sendMessage(String.format("§cBetter luck next time! Lost §e%.0f %s§c.",
                 betAmount, plugin.getConfigLoader().getCurrencySymbol()));
         tableCenter.getWorld().playSound(tableCenter, Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.5f);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 100L);
+        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 120L);
     }
 
     @Override
@@ -318,7 +348,6 @@ public class RouletteGame extends GameBase {
         state = GameState.FINISHED;
     }
 
-    public UUID getGameId() { return gameId; }
-    public int getWinningNumber() { return winningNumber; }
-    public boolean hasAnyBet() { return totalBet > 0; }
+    public UUID getGameId()      { return gameId; }
+    public int getWinningNumber(){ return winningNumber; }
 }

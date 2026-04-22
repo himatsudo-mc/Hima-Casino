@@ -18,7 +18,10 @@ public class HighLowListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        if (!HighLowGame.TITLE.equals(event.getView().getTitle())) return;
+        String title = event.getView().getTitle();
+        boolean isMain = HighLowGame.TITLE.equals(title);
+        boolean isBet  = HighLowGame.BET_TITLE.equals(title);
+        if (!isMain && !isBet) return;
 
         event.setCancelled(true);
         if (event.getClickedInventory() == null) return;
@@ -27,20 +30,22 @@ public class HighLowListener implements Listener {
         HighLowGame game = plugin.getGameManager().getHighLowGame(player);
         if (game == null || game.isFinished()) return;
 
-        game.onCardChosen(event.getSlot());
+        if (isMain) game.handleMainClick(event.getSlot());
+        else        game.handleBetClick(event.getSlot());
     }
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
-        if (!HighLowGame.TITLE.equals(event.getView().getTitle())) return;
+        String title = event.getView().getTitle();
+        if (!HighLowGame.TITLE.equals(title) && !HighLowGame.BET_TITLE.equals(title)) return;
 
         HighLowGame game = plugin.getGameManager().getHighLowGame(player);
         if (game == null || game.isFinished()) return;
 
-        // If player closed mid-game, treat as loss
-        if (game.isWaitingForChoice()) {
-            game.onLoss();
+        // Only clean up when main screen is closed; closing bet screen leaves game alive
+        if (HighLowGame.TITLE.equals(title)) {
+            game.cleanup();
         }
     }
 }

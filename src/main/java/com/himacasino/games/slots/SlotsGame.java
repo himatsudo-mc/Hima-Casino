@@ -2,10 +2,15 @@ package com.himacasino.games.slots;
 
 import com.himacasino.HimaCasino;
 import com.himacasino.core.GameBase;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.block.Block;
+import org.bukkit.block.Sign;
+import org.bukkit.block.sign.Side;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
@@ -20,13 +25,16 @@ public class SlotsGame extends GameBase {
 
     private static final int REELS = 3;
     private static final int SYMBOLS = 7;
-
-    // Reel stop tick offsets (each reel stops 20 ticks after the previous)
     private static final int BASE_SPIN_TICKS = 60;
     private static final int REEL_DELAY = 20;
 
+    private static final String[] SYM_COLORS = {
+        "§f", "§b", "§a", "§e", "§6", "§c", "§d"
+    };
+
     private final int setting;
-    private final Location origin;
+    /** Null when started via command (no physical sign). */
+    private final Block signBlock;
     private final UUID gameId;
 
     private final TextDisplay[] reelDisplays = new TextDisplay[REELS];
@@ -34,224 +42,218 @@ public class SlotsGame extends GameBase {
     private final boolean[] stopped = new boolean[REELS];
     private int tick = 0;
 
-    // Symbol colors for visual feedback
-    private static final String[] SYMBOL_COLORS = {
-        "§f", "§b", "§a", "§e", "§6", "§c", "§d"
-    };
-
-    // Custom model data IDs for ItemDisplay (resource pack)
-    public static final int BASE_CUSTOM_MODEL = 1; // 1–7 = slot numbers
-
-    public SlotsGame(HimaCasino plugin, Player player, double betAmount, int setting, Location origin) {
+    public SlotsGame(HimaCasino plugin, Player player, double betAmount, int setting, Block signBlock) {
         super(plugin, player, betAmount);
         this.setting = setting;
-        this.origin = origin.clone();
+        this.signBlock = signBlock;
         this.gameId = UUID.randomUUID();
     }
 
+    // ── Life-cycle ─────────────────────────────────────────────────────────
+
     @Override
     public void onStart() {
-        if (!chargeBet()) return;
+        if (!chargeBet()) {
+            if (signBlock != null) plugin.getMachineManager().release(signBlock.getLocation());
+            plugin.getGameManager().removeSlotsGame(player);
+            return;
+        }
         state = GameState.RUNNING;
+        updateSign("§e? §7| §e? §7| §e?", "§cPlaying...");
 
         spawnReelDisplays();
 
         player.sendMessage("§6§l╔══════════════════╗");
-        player.sendMessage(String.format("§6§l║  §eスロット §7(設定%d)  §6§l║", setting));
+        player.sendMessage(String.format("§6§l║  §eSLOTS §7(setting %d)  §6§l║", setting));
         player.sendMessage("§6§l╚══════════════════╝");
-        player.sendMessage(String.format("§7賭け金: §e%.0f %s",
-                betAmount, plugin.getConfigLoader().getCurrencySymbol()));
+        player.sendMessage(String.format("§7Bet: §e%.0f %s", betAmount,
+                plugin.getConfigLoader().getCurrencySymbol()));
 
-        origin.getWorld().playSound(origin, Sound.BLOCK_LEVER_CLICK, 1f, 1f);
+        signLocation().getWorld().playSound(signLocation(), Sound.BLOCK_LEVER_CLICK, 1f, 1f);
         startTickTask(1L);
     }
 
     private void spawnReelDisplays() {
+        Location base = signLocation().clone().add(0, 1.8, 0);
+        // Face the sign's direction (default: south / +Z)
         for (int i = 0; i < REELS; i++) {
-            Location loc = origin.clone().add((i - 1) * 1.2, 2.2, 0);
+            Location loc = base.clone().add((i - 1) * 1.2, 0, 0);
             TextDisplay td = plugin.getDisplayManager().spawnTextDisplay(loc, "§f?", 2.0f);
             reelDisplays[i] = td;
             plugin.getDisplayManager().trackDisplay(gameId, td);
-
-            // Reel frame using ItemDisplay (paper with custom model)
-            ItemStack frame = createSlotFrameItem(i);
-            Location frameLoc = origin.clone().add((i - 1) * 1.2, 2.2, -0.05);
-            var frameDisplay = plugin.getDisplayManager().spawnItemDisplay(frameLoc, frame, 1.0f);
-            plugin.getDisplayManager().trackDisplay(gameId, frameDisplay);
         }
-    }
-
-    private ItemStack createSlotFrameItem(int reelIndex) {
-        ItemStack item = new ItemStack(Material.PAPER);
-        ItemMeta meta = item.getItemMeta();
-        meta.setCustomModelData(10 + reelIndex); // resource pack: slot frame models
-        item.setItemMeta(meta);
-        return item;
+        // Frame items above sign
+        for (int i = 0; i < REELS; i++) {
+            ItemStack frame = new ItemStack(Material.PAPER);
+            ItemMeta m = frame.getItemMeta();
+            m.setCustomModelData(10 + i);
+            frame.setItemMeta(m);
+            Location fl = signLocation().clone().add((i - 1) * 1.2, 2.0, -0.05);
+            var fd = plugin.getDisplayManager().spawnItemDisplay(fl, frame, 0.9f);
+            plugin.getDisplayManager().trackDisplay(gameId, fd);
+        }
     }
 
     @Override
     public void onTick() {
         tick++;
-
         for (int i = 0; i < REELS; i++) {
             int stopAt = BASE_SPIN_TICKS + i * REEL_DELAY;
-
             if (!stopped[i]) {
                 if (tick < stopAt) {
-                    // Spinning: cycle through numbers with offset per reel
-                    int displayNum = ((tick + i * 3) % SYMBOLS) + 1;
-                    updateReelDisplay(i, SYMBOL_COLORS[displayNum - 1] + "§l" + displayNum, false);
-
-                    // Tick sound
-                    if (tick % 3 == 0) {
-                        origin.getWorld().playSound(origin, Sound.BLOCK_NOTE_BLOCK_HAT,
-                                0.4f, 1.5f - (float) i * 0.1f);
-                    }
+                    int disp = ((tick + i * 3) % SYMBOLS) + 1;
+                    setReelText(i, SYM_COLORS[disp - 1] + disp, false);
+                    if (tick % 3 == 0)
+                        signLocation().getWorld().playSound(signLocation(), Sound.BLOCK_NOTE_BLOCK_HAT,
+                                0.3f, 1.5f - i * 0.1f);
                 } else {
-                    // Stop this reel
                     results[i] = rollSymbol();
                     stopped[i] = true;
-                    updateReelDisplay(i, SYMBOL_COLORS[results[i] - 1] + "§l" + results[i], true);
-                    origin.getWorld().playSound(origin, Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.0f + i * 0.1f);
-
-                    // Reveal flash particle
-                    origin.getWorld().spawnParticle(Particle.CRIT,
-                            reelDisplays[i].getLocation().add(0, 0.3, 0),
+                    setReelText(i, SYM_COLORS[results[i] - 1] + "§l" + results[i], true);
+                    signLocation().getWorld().playSound(signLocation(), Sound.BLOCK_NOTE_BLOCK_PLING,
+                            1f, 1.0f + i * 0.1f);
+                    signLocation().getWorld().spawnParticle(Particle.CRIT,
+                            reelDisplays[i] != null ? reelDisplays[i].getLocation().add(0, 0.3, 0)
+                                    : signLocation().clone().add(0, 2, 0),
                             8, 0.2, 0.2, 0.2, 0.05);
                 }
             }
         }
+        // Update sign reel line
+        if (tick % 2 == 0) {
+            String r0 = stopped[0] ? SYM_COLORS[results[0]-1] + results[0] : "§e?";
+            String r1 = stopped[1] ? SYM_COLORS[results[1]-1] + results[1] : "§e?";
+            String r2 = stopped[2] ? SYM_COLORS[results[2]-1] + results[2] : "§e?";
+            updateSignLine1(r0 + " §7| " + r1 + " §7| " + r2);
+        }
 
-        // All reels stopped
         if (stopped[0] && stopped[1] && stopped[2]) {
             stopTickTask();
-            // Brief pause before evaluation
             plugin.getServer().getScheduler().runTaskLater(plugin, this::evaluateResult, 15L);
         }
     }
 
-    private void updateReelDisplay(int index, String text, boolean stopped) {
+    private void setReelText(int index, String text, boolean pop) {
         TextDisplay td = reelDisplays[index];
         if (td == null || !td.isValid()) return;
         td.setText(text);
-        if (stopped) {
-            // Scale up slightly on stop for visual pop
-            td.setTransformation(new Transformation(
-                    new Vector3f(0, 0, 0),
-                    new AxisAngle4f(0, 0, 1, 0),
-                    new Vector3f(2.3f, 2.3f, 2.3f),
-                    new AxisAngle4f(0, 0, 1, 0)
-            ));
-            // Return to normal size after 5 ticks
+        if (pop) {
+            td.setTransformation(new Transformation(new Vector3f(0,0,0), new AxisAngle4f(0,0,1,0),
+                    new Vector3f(2.4f, 2.4f, 2.4f), new AxisAngle4f(0,0,1,0)));
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                if (td.isValid()) {
-                    td.setTransformation(new Transformation(
-                            new Vector3f(0, 0, 0),
-                            new AxisAngle4f(0, 0, 1, 0),
-                            new Vector3f(2.0f, 2.0f, 2.0f),
-                            new AxisAngle4f(0, 0, 1, 0)
-                    ));
-                }
+                if (td.isValid()) td.setTransformation(new Transformation(new Vector3f(0,0,0),
+                        new AxisAngle4f(0,0,1,0), new Vector3f(2.0f,2.0f,2.0f), new AxisAngle4f(0,0,1,0)));
             }, 5L);
         }
     }
 
-    private int rollSymbol() {
-        List<Integer> weights = plugin.getConfigLoader().getSlotsWeights(setting);
-        if (weights == null || weights.size() < SYMBOLS) {
-            // Default uniform weights
-            return new Random().nextInt(SYMBOLS) + 1;
-        }
-        int total = weights.stream().mapToInt(Integer::intValue).sum();
-        int roll = new Random().nextInt(total);
-        int cumulative = 0;
-        for (int i = 0; i < weights.size(); i++) {
-            cumulative += weights.get(i);
-            if (roll < cumulative) return i + 1;
-        }
-        return SYMBOLS;
-    }
-
     private void evaluateResult() {
-        player.sendMessage(String.format("§6結果: %s§l%d  %s§l%d  %s§l%d",
-                SYMBOL_COLORS[results[0] - 1], results[0],
-                SYMBOL_COLORS[results[1] - 1], results[1],
-                SYMBOL_COLORS[results[2] - 1], results[2]));
+        player.sendMessage(String.format("§6Result: %s§l%d §7| %s§l%d §7| %s§l%d",
+                SYM_COLORS[results[0]-1], results[0],
+                SYM_COLORS[results[1]-1], results[1],
+                SYM_COLORS[results[2]-1], results[2]));
 
-        Map<String, Double> payouts = plugin.getConfigLoader().getSlotsPayouts();
-        double multiplier = calculateMultiplier(payouts);
-
-        if (multiplier > 0) {
-            onWin(multiplier);
-        } else {
-            onLoss();
-        }
+        Map<String, Double> pay = plugin.getConfigLoader().getSlotsPayouts();
+        double mult = calcMultiplier(pay);
+        if (mult > 0) onWin(mult); else onLoss();
     }
 
-    private double calculateMultiplier(Map<String, Double> payouts) {
+    private double calcMultiplier(Map<String, Double> pay) {
         int a = results[0], b = results[1], c = results[2];
-
-        // 7-7-7 jackpot
-        if (a == 7 && b == 7 && c == 7) {
-            player.sendMessage("§6§l★★★  JACKPOT! 7-7-7  ★★★");
-            return payouts.getOrDefault("7-7-7", 100.0);
-        }
-        // Three of a kind
-        if (a == b && b == c) {
-            player.sendMessage("§a§l3つ揃い！");
-            return payouts.getOrDefault("3-of-a-kind", 10.0);
-        }
-        // Two 7s
-        if (countOf(7) == 2) {
-            player.sendMessage("§a7が2つ！");
-            return payouts.getOrDefault("two-7s", 5.0);
-        }
-        // One 7
-        if (countOf(7) == 1) {
-            player.sendMessage("§a7が1つ！");
-            return payouts.getOrDefault("one-7", 2.0);
-        }
-        // Two of a kind
-        if (a == b || b == c || a == c) {
-            player.sendMessage("§a2つ揃い！");
-            return payouts.getOrDefault("two-of-a-kind", 1.5);
-        }
+        if (a == 7 && b == 7 && c == 7) { player.sendMessage("§6§l★ JACKPOT! 7-7-7 ★"); return pay.getOrDefault("7-7-7", 100.0); }
+        if (a == b && b == c)            { player.sendMessage("§a§l3 of a kind!"); return pay.getOrDefault("3-of-a-kind", 10.0); }
+        if (countOf(7) == 2)             { player.sendMessage("§aTwo 7s!"); return pay.getOrDefault("two-7s", 5.0); }
+        if (countOf(7) == 1)             { player.sendMessage("§aOne 7!"); return pay.getOrDefault("one-7", 2.0); }
+        if (a==b || b==c || a==c)        { player.sendMessage("§a2 of a kind!"); return pay.getOrDefault("two-of-a-kind", 1.5); }
         return 0;
     }
 
-    private int countOf(int sym) {
-        int n = 0;
-        for (int r : results) if (r == sym) n++;
-        return n;
+    private int countOf(int sym) { int n=0; for(int r:results) if(r==sym) n++; return n; }
+
+    private int rollSymbol() {
+        List<Integer> w = plugin.getConfigLoader().getSlotsWeights(setting);
+        if (w == null || w.size() < SYMBOLS) return new Random().nextInt(SYMBOLS) + 1;
+        int total = w.stream().mapToInt(Integer::intValue).sum();
+        int roll  = new Random().nextInt(total);
+        int cum   = 0;
+        for (int i = 0; i < w.size(); i++) { cum += w.get(i); if (roll < cum) return i + 1; }
+        return SYMBOLS;
     }
 
     @Override
     public void onWin(double multiplier) {
         state = GameState.WIN;
         payWinnings(multiplier);
-        origin.getWorld().playSound(origin, Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
-        origin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
-                origin.clone().add(0, 2.5, 0), 40, 0.8, 0.5, 0.8, 0);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 100L);
+        String sym = String.format("%s§l%d §7| %s§l%d §7| %s§l%d",
+                SYM_COLORS[results[0]-1], results[0],
+                SYM_COLORS[results[1]-1], results[1],
+                SYM_COLORS[results[2]-1], results[2]);
+        updateSign(sym, "§aYou Win! +" + fmt(betAmount * multiplier));
+        signLocation().getWorld().playSound(signLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+        signLocation().getWorld().spawnParticle(Particle.HAPPY_VILLAGER, signLocation().clone().add(0,2.5,0), 40, 0.8, 0.5, 0.8, 0);
+        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 120L);
     }
 
     @Override
     public void onLoss() {
         state = GameState.LOSS;
-        player.sendMessage(String.format("§c残念！ §7賭け金 §e%.0f %s §7を失いました。",
-                betAmount, plugin.getConfigLoader().getCurrencySymbol()));
-        origin.getWorld().playSound(origin, Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.5f);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 80L);
+        player.sendMessage(String.format("§cNo luck! Lost §e%.0f %s§c.", betAmount,
+                plugin.getConfigLoader().getCurrencySymbol()));
+        String sym = String.format("%s§l%d §7| %s§l%d §7| %s§l%d",
+                SYM_COLORS[results[0]-1], results[0],
+                SYM_COLORS[results[1]-1], results[1],
+                SYM_COLORS[results[2]-1], results[2]);
+        updateSign(sym, "§cTry Again!");
+        signLocation().getWorld().playSound(signLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.5f);
+        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 100L);
     }
 
     @Override
     public void cleanup() {
         stopTickTask();
         plugin.getDisplayManager().removeGameDisplays(gameId);
+        // Restore sign to idle state
+        String sym = (results[0] > 0)
+                ? String.format("%s%d §7| %s%d §7| %s%d",
+                        SYM_COLORS[results[0]-1], results[0],
+                        SYM_COLORS[results[1]-1], results[1],
+                        SYM_COLORS[results[2]-1], results[2])
+                : "§7? §7| §7? §7| §7?";
+        updateSign(sym, "§aClick to Start!");
+        if (signBlock != null) plugin.getMachineManager().release(signBlock.getLocation());
         plugin.getGameManager().removeSlotsGame(player);
         state = GameState.FINISHED;
     }
 
-    public UUID getGameId() { return gameId; }
-    public int getSetting() { return setting; }
+    // ── Sign helpers ───────────────────────────────────────────────────────
+
+    private void updateSign(String reelLine, String statusLine) {
+        if (signBlock == null) return;
+        if (!(signBlock.getState() instanceof Sign sign)) return;
+        var side = sign.getSide(Side.FRONT);
+        side.line(1, leg(reelLine));
+        side.line(3, leg(statusLine));
+        sign.update();
+    }
+
+    private void updateSignLine1(String reelLine) {
+        if (signBlock == null) return;
+        if (!(signBlock.getState() instanceof Sign sign)) return;
+        sign.getSide(Side.FRONT).line(1, leg(reelLine));
+        sign.update();
+    }
+
+    private static Component leg(String s) {
+        return LegacyComponentSerializer.legacySection().deserialize(s);
+    }
+
+    private Location signLocation() {
+        return signBlock != null ? signBlock.getLocation() : player.getLocation();
+    }
+
+    private static String fmt(double v) {
+        if (v >= 1_000_000) return String.format("%.1fM", v / 1_000_000);
+        if (v >= 1_000)     return String.format("%.1fk", v / 1_000);
+        return String.format("%.0f", v);
+    }
 }

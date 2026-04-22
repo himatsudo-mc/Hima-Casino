@@ -15,183 +15,349 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * HIGH & LOW card game.
+ * HIGH & LOW card game with:
+ *  - Separate bet-setting screen (chip accumulator)
+ *  - Repeat-play without closing inventory
+ *  - No A/B labels on face-down cards
  *
- * Layout (3-row / 27-slot inventory):
- *   Row 0 (0-8):   [bg] [bg] [bg] [bg] [DEALER CARD] [bg] [bg] [bg] [bg]
- *   Row 1 (9-17):  [bg] [CARD A] [bg] [bg] [vs] [bg] [bg] [CARD B] [bg]
- *   Row 2 (18-26): [bg] [bg] [bg] [bg] [RESULT] [bg] [bg] [bg] [bg]
+ * ── Inventory layouts (3 rows = 27 slots) ───────────────────────────────────
+ *
+ * BET_SETTING screen  (title = BET_TITLE)
+ *   Row 0:  bg  bg  bg  bg  [CURRENT BET display]  bg  bg  bg  bg
+ *   Row 1: +10 +50 +100 +500 +1k  bg  bg  CLEAR  bg
+ *   Row 2:  bg  bg  bg  bg  [CONFIRM ✓]  bg  bg  bg  bg
+ *
+ * MAIN screen  (title = TITLE)
+ *   BET phase:
+ *     Row 0:  bg × 9
+ *     Row 1:  bg  bg  bg  bg  bg  bg  bg  bg  bg
+ *     Row 2:  bg  [SET BET →]  bg  bg  [▶ PLAY!]  bg  bg  bg  bg
+ *
+ *   PLAYING phase:
+ *     Row 0:  bg  bg  bg  bg  [DEALER CARD]  bg  bg  bg  bg
+ *     Row 1:  bg  [CARD L]  bg  bg  [VS]  bg  bg  [CARD R]  bg
+ *     Row 2:  bg  bg  bg  bg  [BET info]  bg  bg  bg  bg
+ *
+ *   RESULT phase:
+ *     Row 0:  bg  bg  bg  bg  [DEALER CARD]  bg  bg  bg  bg
+ *     Row 1:  bg  [CHOSEN]  bg  bg  [RESULT]  bg  bg  [OTHER]  bg
+ *     Row 2:  bg  bg  [PLAY AGAIN]  bg  bg  bg  [CHANGE BET]  bg  [EXIT]
  */
 public class HighLowGame extends GameBase {
 
-    public static final String TITLE = "§6HIGH & LOW";
+    public static final String TITLE     = "§6HIGH & LOW";
+    public static final String BET_TITLE = "§6Bet Setting";
 
-    private static final int CARD_MIN = 1;
-    private static final int CARD_MAX = 13;
+    private static final int CARD_MIN = 1, CARD_MAX = 13;
 
-    // Slot indices
-    private static final int SLOT_DEALER = 4;
-    private static final int SLOT_CARD_A = 10;
-    private static final int SLOT_CARD_B = 16;
-    private static final int SLOT_VS     = 13;
-    private static final int SLOT_RESULT = 22;
+    // ── Slot indices (main screen) ─────────────────────────────────────────
+    // PLAYING phase
+    private static final int S_DEALER      = 4;
+    private static final int S_CARD_L      = 10;
+    private static final int S_CARD_R      = 16;
+    private static final int S_VS          = 13;
+    private static final int S_BET_INFO    = 22;
+    // BET phase
+    private static final int S_SET_BET     = 19;
+    private static final int S_PLAY        = 22;
+    // RESULT phase
+    private static final int S_RESULT      = 13;
+    private static final int S_PLAY_AGAIN  = 20;
+    private static final int S_CHANGE_BET  = 24;
+    private static final int S_EXIT        = 26;
+
+    // ── Slot indices (bet-setting screen) ─────────────────────────────────
+    private static final int B_CURRENT     = 4;
+    private static final int B_CHIP_START  = 9;  // slots 9–13 = +10,+50,+100,+500,+1k
+    private static final int B_CLEAR       = 17;
+    private static final int B_CONFIRM     = 22;
+
+    private static final double[] CHIP_VALUES = {10, 50, 100, 500, 1000};
+
+    private enum Phase { BET, PLAYING, RESULT }
+
+    // ── State ──────────────────────────────────────────────────────────────
+    private double currentBet = 0;
+    private Phase  phase = Phase.BET;
 
     private int dealerCard;
-    private final int[] hiddenCards = new int[2];
-    private Inventory inventory;
-    private boolean waitingForChoice = false;
+    private int[] hiddenCards = new int[2];
+    private int chosenIndex = -1;
 
-    public HighLowGame(HimaCasino plugin, Player player, double betAmount) {
-        super(plugin, player, betAmount);
+    private Inventory mainInv;
+    private Inventory betInv;
+
+    public HighLowGame(HimaCasino plugin, Player player) {
+        super(plugin, player, 0);
     }
 
+    // ── Life-cycle entry points ────────────────────────────────────────────
+
+    /** Opens the main screen in BET phase. */
     @Override
     public void onStart() {
-        if (!chargeBet()) return;
         state = GameState.RUNNING;
+        phase = Phase.BET;
+        buildMain();
+        player.openInventory(mainInv);
+    }
+
+    // ── Inventory builders ─────────────────────────────────────────────────
+
+    private void buildMain() {
+        mainInv = plugin.getServer().createInventory(null, 27, TITLE);
+        ItemStack bg = bg();
+        for (int i = 0; i < 27; i++) mainInv.setItem(i, bg);
+
+        switch (phase) {
+            case BET -> buildMain_Bet();
+            case PLAYING -> buildMain_Playing();
+            case RESULT  -> buildMain_Result();
+        }
+    }
+
+    private void buildMain_Bet() {
+        double min = plugin.getConfigLoader().getHighLowMinBet();
+        String betStr = currentBet > 0
+                ? String.format("§eBet: §6§l%.0f %s", currentBet, plugin.getConfigLoader().getCurrencySymbol())
+                : "§7Bet: §enot set";
+
+        mainInv.setItem(S_SET_BET, makeItem(Material.GOLD_INGOT,
+                "§e§l⚙ Set Bet",
+                List.of(betStr, "§7Click to open Bet Setting screen")));
+
+        boolean canPlay = currentBet >= min
+                && (!plugin.getEconomyManager().isEnabled()
+                    || plugin.getEconomyManager().getBalance(player) >= currentBet);
+
+        if (canPlay) {
+            mainInv.setItem(S_PLAY, makeItem(Material.LIME_CONCRETE,
+                    "§a§l▶ PLAY!",
+                    List.of(betStr)));
+        } else {
+            String reason = currentBet < min
+                    ? String.format("§cMin bet: %.0f", min)
+                    : "§cInsufficient balance";
+            mainInv.setItem(S_PLAY, makeItem(Material.RED_CONCRETE,
+                    "§c§l✗ PLAY",
+                    List.of(reason, betStr)));
+        }
+    }
+
+    private void buildMain_Playing() {
+        mainInv.setItem(S_DEALER, makeDealerCard());
+        mainInv.setItem(S_CARD_L, makeHiddenCard());
+        mainInv.setItem(S_CARD_R, makeHiddenCard());
+        mainInv.setItem(S_VS,   makeItem(Material.IRON_BARS, "§7§l─ VS ─", null));
+        mainInv.setItem(S_BET_INFO, makeItem(Material.PAPER,
+                String.format("§7Bet: §e%.0f %s", betAmount, plugin.getConfigLoader().getCurrencySymbol()),
+                List.of("§7Choose a card — higher than dealer wins!")));
+    }
+
+    private void buildMain_Result() {
+        mainInv.setItem(S_DEALER, makeDealerCard());
+
+        // Chosen card (highlighted)
+        int chosen = hiddenCards[chosenIndex];
+        mainInv.setItem(S_CARD_L, makeRevealedCard(chosen, true));
+        // Other card
+        mainInv.setItem(S_CARD_R, makeRevealedCard(hiddenCards[1 - chosenIndex], false));
+
+        // Result item
+        boolean win   = chosen > dealerCard;
+        boolean draw  = chosen == dealerCard;
+        Material rm   = win ? Material.GOLD_INGOT : (draw ? Material.PAPER : Material.BARRIER);
+        String  rtitle = win ? "§a§l★ WIN!" : (draw ? "§7§lDRAW" : "§c§l✗ LOSE");
+        List<String> rlore = new ArrayList<>();
+        if (win) rlore.add(String.format("§a+%.0f %s", betAmount * plugin.getConfigLoader().getHighLowWinMultiplier(),
+                plugin.getConfigLoader().getCurrencySymbol()));
+        else if (draw) rlore.add("§7Bet returned");
+        else rlore.add(String.format("§c-%.0f %s", betAmount, plugin.getConfigLoader().getCurrencySymbol()));
+        mainInv.setItem(S_RESULT, makeItem(rm, rtitle, rlore));
+
+        // Action buttons
+        mainInv.setItem(S_PLAY_AGAIN, makeItem(Material.LIME_CONCRETE,
+                "§a§l▶ Play Again",
+                List.of(String.format("§7Bet: §e%.0f %s", betAmount, plugin.getConfigLoader().getCurrencySymbol()))));
+        mainInv.setItem(S_CHANGE_BET, makeItem(Material.GOLD_INGOT,
+                "§e§l⚙ Change Bet", List.of("§7Set a new bet amount")));
+        mainInv.setItem(S_EXIT, makeItem(Material.RED_CONCRETE, "§c§l✗ Exit", List.of("§7Close the game")));
+    }
+
+    // ── Bet setting screen ─────────────────────────────────────────────────
+
+    public void openBetSetting() {
+        betInv = plugin.getServer().createInventory(null, 27, BET_TITLE);
+        refreshBetScreen();
+        player.openInventory(betInv);
+    }
+
+    private void refreshBetScreen() {
+        if (betInv == null) return;
+        ItemStack bg = bg();
+        for (int i = 0; i < 27; i++) betInv.setItem(i, bg);
+
+        // Current bet display
+        betInv.setItem(B_CURRENT, makeItem(Material.GOLD_BLOCK,
+                String.format("§eCurrent Bet: §6§l%.0f %s",
+                        currentBet, plugin.getConfigLoader().getCurrencySymbol()),
+                List.of("§7Add chips below", String.format("§7Max: §e%.0f",
+                        plugin.getConfigLoader().getHighLowMaxBet()))));
+
+        // Chip buttons
+        Material[] mats = {Material.IRON_NUGGET, Material.GOLD_NUGGET, Material.IRON_INGOT,
+                Material.GOLD_INGOT, Material.NETHERITE_INGOT};
+        for (int i = 0; i < CHIP_VALUES.length; i++) {
+            betInv.setItem(B_CHIP_START + i, makeItem(mats[i],
+                    "§a§l+" + (int) CHIP_VALUES[i],
+                    List.of("§7Click to add §e" + (int) CHIP_VALUES[i] + " §7to bet")));
+        }
+
+        // Clear
+        betInv.setItem(B_CLEAR, makeItem(Material.BARRIER, "§c§lClear", List.of("§7Reset bet to 0")));
+
+        // Confirm
+        double min = plugin.getConfigLoader().getHighLowMinBet();
+        boolean ok = currentBet >= min;
+        betInv.setItem(B_CONFIRM, makeItem(
+                ok ? Material.LIME_CONCRETE : Material.RED_CONCRETE,
+                ok ? "§a§l✓ Confirm" : String.format("§c§l✗ Min %.0f required", min),
+                List.of(String.format("§7Bet: §e%.0f %s", currentBet,
+                        plugin.getConfigLoader().getCurrencySymbol()))));
+    }
+
+    // ── Click handlers ─────────────────────────────────────────────────────
+
+    /** Called by HighLowListener for main inventory clicks. */
+    public void handleMainClick(int slot) {
+        switch (phase) {
+            case BET    -> handleBetPhaseClick(slot);
+            case PLAYING -> handlePlayingPhaseClick(slot);
+            case RESULT  -> handleResultPhaseClick(slot);
+        }
+    }
+
+    private void handleBetPhaseClick(int slot) {
+        if (slot == S_SET_BET) {
+            openBetSetting();
+        } else if (slot == S_PLAY) {
+            double min = plugin.getConfigLoader().getHighLowMinBet();
+            if (currentBet < min) {
+                player.sendMessage(String.format("§cMinimum bet is §e%.0f!", min));
+                return;
+            }
+            startRound();
+        }
+    }
+
+    private void handlePlayingPhaseClick(int slot) {
+        if (slot != S_CARD_L && slot != S_CARD_R) return;
+        chosenIndex = (slot == S_CARD_L) ? 0 : 1;
+        revealCards();
+    }
+
+    private void handleResultPhaseClick(int slot) {
+        if (slot == S_PLAY_AGAIN) {
+            playAgain();
+        } else if (slot == S_CHANGE_BET) {
+            phase = Phase.BET;
+            buildMain();
+            player.openInventory(mainInv);
+        } else if (slot == S_EXIT) {
+            cleanup();
+        }
+    }
+
+    /** Called by HighLowListener for bet-setting inventory clicks. */
+    public void handleBetClick(int slot) {
+        if (slot >= B_CHIP_START && slot < B_CHIP_START + CHIP_VALUES.length) {
+            double add = CHIP_VALUES[slot - B_CHIP_START];
+            double max = plugin.getConfigLoader().getHighLowMaxBet();
+            currentBet = Math.min(currentBet + add, max);
+            refreshBetScreen();
+        } else if (slot == B_CLEAR) {
+            currentBet = 0;
+            refreshBetScreen();
+        } else if (slot == B_CONFIRM) {
+            if (currentBet >= plugin.getConfigLoader().getHighLowMinBet()) {
+                // Return to main screen
+                phase = Phase.BET;
+                buildMain();
+                player.openInventory(mainInv);
+            }
+        }
+    }
+
+    // ── Round management ───────────────────────────────────────────────────
+
+    private void startRound() {
+        betAmount = currentBet;
+        if (!chargeBet()) {
+            currentBet = 0;
+            buildMain();
+            return;
+        }
 
         Random rng = new Random();
-        dealerCard = rng.nextInt(CARD_MAX) + CARD_MIN;
+        dealerCard    = rng.nextInt(CARD_MAX) + CARD_MIN;
         hiddenCards[0] = rng.nextInt(CARD_MAX) + CARD_MIN;
         hiddenCards[1] = rng.nextInt(CARD_MAX) + CARD_MIN;
+        chosenIndex   = -1;
 
-        buildInventory();
-        player.openInventory(inventory);
-        waitingForChoice = true;
+        phase = Phase.PLAYING;
+        buildMain();
+        player.openInventory(mainInv);
 
-        player.sendMessage("§6§l╔════════════════════╗");
-        player.sendMessage("§6§l║    HIGH & LOW       ║");
-        player.sendMessage("§6§l╚════════════════════╝");
-        player.sendMessage(String.format("§eディーラーカード: §f§l%s", cardName(dealerCard)));
-        player.sendMessage("§7左か右のカードを選んでください！");
+        player.sendMessage(String.format("§6Dealer: §f§l%s  §7(Bet: §e%.0f§7)",
+                cardName(dealerCard), betAmount));
     }
 
-    private void buildInventory() {
-        inventory = plugin.getServer().createInventory(null, 27, TITLE);
-
-        // Background
-        ItemStack bg = makeItem(Material.GRAY_STAINED_GLASS_PANE, "§0", null);
-        for (int i = 0; i < 27; i++) inventory.setItem(i, bg);
-
-        // Dealer card (face up)
-        inventory.setItem(SLOT_DEALER, makeDealerItem());
-
-        // Two hidden cards (face down)
-        inventory.setItem(SLOT_CARD_A, makeHiddenCard("A"));
-        inventory.setItem(SLOT_CARD_B, makeHiddenCard("B"));
-
-        // VS label
-        inventory.setItem(SLOT_VS, makeItem(Material.BARRIER, "§7§l－ VS －", null));
-
-        // Instruction
-        inventory.setItem(SLOT_RESULT, makeItem(Material.BOOK,
-                "§e§lどちらが高い？",
-                List.of("§7左右どちらかのカードをクリック",
-                        String.format("§7賭け金: §e%.0f %s",
-                                betAmount, plugin.getConfigLoader().getCurrencySymbol()))));
-    }
-
-    private ItemStack makeDealerItem() {
-        ItemStack item = new ItemStack(cardMaterial(dealerCard));
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§e§lディーラー: §f§l" + cardName(dealerCard));
-        meta.setLore(List.of("§7値: §e" + dealerCard));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    private ItemStack makeHiddenCard(String label) {
-        ItemStack item = new ItemStack(Material.BLUE_STAINED_GLASS_PANE);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName("§b§l? カード " + label);
-        meta.setLore(List.of("§7クリックして選択！", "§7これが §e" + cardName(dealerCard) + " §7より高い？"));
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    public void onCardChosen(int slot) {
-        if (!waitingForChoice || state != GameState.RUNNING) return;
-
-        int chosenIndex;
-        if (slot == SLOT_CARD_A) chosenIndex = 0;
-        else if (slot == SLOT_CARD_B) chosenIndex = 1;
-        else return;
-
-        waitingForChoice = false;
+    private void revealCards() {
+        if (chosenIndex < 0) return;
         int chosen = hiddenCards[chosenIndex];
-        int other  = hiddenCards[1 - chosenIndex];
 
-        // Reveal both cards with delay
-        revealCard(slot, chosen, true);
-        int otherSlot = (chosenIndex == 0) ? SLOT_CARD_B : SLOT_CARD_A;
-        plugin.getServer().getScheduler().runTaskLater(plugin, () ->
-                revealCard(otherSlot, other, false), 8L);
-
-        // Sound & particles on selection
+        // Sound + particles
         player.getWorld().playSound(player.getLocation(), Sound.ITEM_ARMOR_EQUIP_LEATHER, 1f, 1.8f);
-        player.getWorld().spawnParticle(Particle.CRIT,
-                player.getLocation().add(0, 1.5, 0), 10, 0.4, 0.4, 0.4, 0.1);
+        player.getWorld().spawnParticle(Particle.CRIT, player.getLocation().add(0, 1.5, 0),
+                10, 0.4, 0.4, 0.4, 0.1);
 
-        player.sendMessage(String.format("§eあなたのカード: §f§l%s (値: %d)", cardName(chosen), chosen));
+        player.sendMessage(String.format("§eYour card: §f§l%s", cardName(chosen)));
 
-        // Evaluate after reveal animation
+        // Update inventory immediately
+        phase = Phase.RESULT;
+        buildMain();
+
+        // Evaluate (brief delay for drama)
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (chosen > dealerCard) {
-                showResultOverlay(true);
-                onWin(plugin.getConfigLoader().getHighLowWinMultiplier());
-            } else if (chosen < dealerCard) {
-                showResultOverlay(false);
-                onLoss();
-            } else {
-                showResultOverlay(null);
-                onDraw();
-            }
+            if (isFinished()) return;
+            if (chosen > dealerCard)       onWin(plugin.getConfigLoader().getHighLowWinMultiplier());
+            else if (chosen < dealerCard)  onLoss();
+            else                           onDraw();
         }, 20L);
     }
 
-    private void revealCard(int slot, int value, boolean chosen) {
-        if (inventory == null) return;
-        ItemStack item = new ItemStack(cardMaterial(value));
-        ItemMeta meta = item.getItemMeta();
-        String prefix = chosen ? "§a§l" : "§7";
-        meta.setDisplayName(prefix + cardName(value));
-        List<String> lore = new ArrayList<>();
-        lore.add("§7値: §e" + value);
-        if (chosen) lore.add("§a§l◀ あなたの選択");
-        meta.setLore(lore);
-        item.setItemMeta(meta);
-        inventory.setItem(slot, item);
-    }
-
-    private void showResultOverlay(Boolean win) {
-        if (inventory == null) return;
-        ItemStack result;
-        if (Boolean.TRUE.equals(win)) {
-            result = makeItem(Material.GOLD_INGOT, "§a§l★ 勝利！★",
-                    List.of(String.format("§e+%.0f %s", betAmount * plugin.getConfigLoader().getHighLowWinMultiplier(),
-                            plugin.getConfigLoader().getCurrencySymbol())));
-        } else if (Boolean.FALSE.equals(win)) {
-            result = makeItem(Material.BARRIER, "§c§l✗ 敗北...",
-                    List.of(String.format("§c-%.0f %s", betAmount, plugin.getConfigLoader().getCurrencySymbol())));
-        } else {
-            result = makeItem(Material.PAPER, "§7§l引き分け",
-                    List.of("§7賭け金を返還"));
+    /** Same bet, new cards — inventory stays open. */
+    private void playAgain() {
+        double eco = plugin.getEconomyManager().isEnabled()
+                ? plugin.getEconomyManager().getBalance(player) : Double.MAX_VALUE;
+        if (eco < betAmount) {
+            player.sendMessage(String.format("§cInsufficient balance for §e%.0f %s§c!",
+                    betAmount, plugin.getConfigLoader().getCurrencySymbol()));
+            return;
         }
-        inventory.setItem(SLOT_RESULT, result);
+        currentBet = betAmount; // keep same bet
+        startRound();
     }
 
     private void onDraw() {
-        state = GameState.FINISHED;
         plugin.getEconomyManager().deposit(player, betAmount);
-        player.sendMessage("§7§l引き分け！ 賭け金を返還します。");
+        player.sendMessage("§7§lDRAW! Bet returned.");
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 80L);
+        // Refresh result screen (already built) — no further changes needed
     }
 
     @Override
-    public void onTick() {
-        // Event-driven; no tick loop needed
-    }
+    public void onTick() { /* event-driven */ }
 
     @Override
     public void onWin(double multiplier) {
@@ -200,36 +366,85 @@ public class HighLowGame extends GameBase {
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
         player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                 player.getLocation().add(0, 1, 0), 25, 0.8, 0.5, 0.8, 0);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 80L);
+        // Reset state for potential replay (state returns to RUNNING if player hits Play Again)
+        state = GameState.RUNNING;
     }
 
     @Override
     public void onLoss() {
-        state = GameState.LOSS;
-        player.sendMessage(String.format("§c§l敗北... §7賭け金 §e%.0f %s §7を失いました。",
+        state = GameState.RUNNING; // allow replay
+        player.sendMessage(String.format("§c§lDealer wins! Lost §e%.0f %s§c.",
                 betAmount, plugin.getConfigLoader().getCurrencySymbol()));
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.5f);
-        plugin.getServer().getScheduler().runTaskLater(plugin, this::cleanup, 80L);
     }
 
     @Override
     public void cleanup() {
         stopTickTask();
-        if (player.getOpenInventory().getTitle().equals(TITLE)) {
+        if (TITLE.equals(player.getOpenInventory().getTitle())
+                || BET_TITLE.equals(player.getOpenInventory().getTitle())) {
             player.closeInventory();
         }
         plugin.getGameManager().removeHighLowGame(player);
         state = GameState.FINISHED;
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
+    // ── Item factories ─────────────────────────────────────────────────────
+
+    private ItemStack makeDealerCard() {
+        ItemStack item = new ItemStack(cardMaterial(dealerCard));
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName("§e§lDealer: §f§l" + cardName(dealerCard));
+        meta.setLore(List.of("§7Value: §e" + dealerCard));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack makeHiddenCard() {
+        ItemStack item = new ItemStack(Material.BLUE_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName("§b§l?");
+        meta.setLore(List.of("§7Click to select this card",
+                "§7Higher than dealer = WIN"));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack makeRevealedCard(int value, boolean chosen) {
+        ItemStack item = new ItemStack(cardMaterial(value));
+        ItemMeta meta = item.getItemMeta();
+        String prefix = chosen ? "§a§l" : "§7";
+        meta.setDisplayName(prefix + cardName(value));
+        List<String> lore = new ArrayList<>();
+        lore.add("§7Value: §e" + value);
+        if (chosen) lore.add("§a§l◀ Your pick");
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack makeItem(Material mat, String name, List<String> lore) {
+        ItemStack item = new ItemStack(mat);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(name);
+        if (lore != null) meta.setLore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack bg() {
+        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName("§0");
+        item.setItemMeta(meta);
+        return item;
+    }
 
     private String cardName(int v) {
         return switch (v) {
-            case 1  -> "A (エース)";
-            case 11 -> "J (ジャック)";
-            case 12 -> "Q (クイーン)";
-            case 13 -> "K (キング)";
+            case 1  -> "A";
+            case 11 -> "J";
+            case 12 -> "Q";
+            case 13 -> "K";
             default -> String.valueOf(v);
         };
     }
@@ -253,15 +468,8 @@ public class HighLowGame extends GameBase {
         };
     }
 
-    private ItemStack makeItem(Material mat, String name, List<String> lore) {
-        ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name);
-        if (lore != null) meta.setLore(lore);
-        item.setItemMeta(meta);
-        return item;
-    }
+    // ── Accessors ──────────────────────────────────────────────────────────
 
-    public Inventory getInventory() { return inventory; }
-    public boolean isWaitingForChoice() { return waitingForChoice; }
+    public Inventory getMainInventory() { return mainInv; }
+    public Inventory getBetInventory()  { return betInv; }
 }

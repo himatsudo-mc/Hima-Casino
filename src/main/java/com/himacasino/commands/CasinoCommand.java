@@ -64,7 +64,7 @@ public class CasinoCommand implements CommandExecutor {
         }
 
         int setting = plugin.getConfigLoader().getSlotsDefaultSetting();
-        SlotsGame game = new SlotsGame(plugin, player, bet, setting, player.getLocation());
+        SlotsGame game = new SlotsGame(plugin, player, bet, setting, null);
         plugin.getGameManager().registerSlotsGame(player, game);
         game.onStart();
     }
@@ -136,25 +136,15 @@ public class CasinoCommand implements CommandExecutor {
         }
     }
 
-    // ── /casino highlow <bet> ──────────────────────────────────────────────
+    // ── /casino highlow ────────────────────────────────────────────────────
 
     private void handleHighLow(Player player, String[] args) {
-        double bet = parseBet(player, args, 1);
-        if (bet < 0) return;
-
-        double min = plugin.getConfigLoader().getHighLowMinBet();
-        double max = plugin.getConfigLoader().getHighLowMaxBet();
-        if (bet < min || bet > max) {
-            player.sendMessage(String.format("§cベット額は §e%.0f §c〜 §e%.0f %s §cにしてください。",
-                    min, max, plugin.getConfigLoader().getCurrencySymbol()));
-            return;
-        }
         if (plugin.getGameManager().hasActiveGame(player)) {
             player.sendMessage("§c現在進行中のゲームがあります。");
             return;
         }
 
-        HighLowGame game = new HighLowGame(plugin, player, bet);
+        HighLowGame game = new HighLowGame(plugin, player);
         plugin.getGameManager().registerHighLowGame(player, game);
         game.onStart();
     }
@@ -271,7 +261,7 @@ public class CasinoCommand implements CommandExecutor {
         player.sendMessage("§e/casino roulette §f[open]§7 – ルーレットUIを開く");
         player.sendMessage("§e/casino roulette §f<数字|red|black> <額>§7 – ルーレットベット");
         player.sendMessage("§e/casino roulette spin§7 – ルーレットを回す");
-        player.sendMessage("§e/casino highlow §f<ベット額>§7 – HIGH & LOW を遊ぶ");
+        player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ (ベット額はUI内で設定)");
         if (player.hasPermission("himacasino.admin")) {
             player.sendMessage("§c§l[管理者]");
             player.sendMessage("§c/casino setting §f<1-6>§7 – スロット設定変更");
