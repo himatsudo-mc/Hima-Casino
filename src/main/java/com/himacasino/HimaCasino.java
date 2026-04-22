@@ -64,7 +64,8 @@ public class HimaCasino extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (gameManager != null) gameManager.cleanupAll();
+        if (gameManager    != null) gameManager.cleanupAll();
+        if (machineManager != null) machineManager.cleanup(); // cancels idle tasks + despawns tables
         if (displayManager != null) displayManager.cleanup();
         getLogger().info("HimaCasino が無効になりました。");
     }

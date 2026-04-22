@@ -4,7 +4,6 @@ import com.himacasino.HimaCasino;
 import com.himacasino.games.highlow.HighLowGame;
 import com.himacasino.games.roulette.RouletteBetUI;
 import com.himacasino.games.roulette.RouletteGame;
-import com.himacasino.games.slots.SlotsGame;
 import com.himacasino.manager.MachineManager;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -34,7 +33,6 @@ public class CasinoCommand implements CommandExecutor {
         }
 
         switch (args[0].toLowerCase()) {
-            case "slots"    -> handleSlots(player, args);
             case "roulette" -> handleRoulette(player, args);
             case "highlow"  -> handleHighLow(player, args);
             case "setting"  -> handleSetting(player, args);
@@ -43,30 +41,6 @@ public class CasinoCommand implements CommandExecutor {
             default         -> sendHelp(player);
         }
         return true;
-    }
-
-    // ── /casino slots <bet> ────────────────────────────────────────────────
-
-    private void handleSlots(Player player, String[] args) {
-        double bet = parseBet(player, args, 1);
-        if (bet < 0) return;
-
-        double min = plugin.getConfigLoader().getSlotsMinBet();
-        double max = plugin.getConfigLoader().getSlotsMaxBet();
-        if (bet < min || bet > max) {
-            player.sendMessage(String.format("§cベット額は §e%.0f §c〜 §e%.0f %s §cにしてください。",
-                    min, max, plugin.getConfigLoader().getCurrencySymbol()));
-            return;
-        }
-        if (plugin.getGameManager().hasActiveGame(player)) {
-            player.sendMessage("§c現在進行中のゲームがあります。");
-            return;
-        }
-
-        int setting = plugin.getConfigLoader().getSlotsDefaultSetting();
-        SlotsGame game = new SlotsGame(plugin, player, bet, setting, null);
-        plugin.getGameManager().registerSlotsGame(player, game);
-        game.onStart();
     }
 
     // ── /casino roulette [<number|red|black> <bet>|spin|open] ─────────────
@@ -257,7 +231,7 @@ public class CasinoCommand implements CommandExecutor {
 
     private void sendHelp(Player player) {
         player.sendMessage("§6§l══════ HimaCasino ══════");
-        player.sendMessage("§e/casino slots §f<ベット額>§7 – スロットを遊ぶ");
+        player.sendMessage("§7スロット: §f[slot]§7 看板を右クリック");
         player.sendMessage("§e/casino roulette §f[open]§7 – ルーレットUIを開く");
         player.sendMessage("§e/casino roulette §f<数字|red|black> <額>§7 – ルーレットベット");
         player.sendMessage("§e/casino roulette spin§7 – ルーレットを回す");

@@ -25,7 +25,7 @@ public class RouletteListener implements Listener {
         this.plugin = plugin;
     }
 
-    // ── World interaction: right-click roulette table block ────────────────
+    // ── Right-click roulette table block ──────────────────────────────────
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
@@ -33,12 +33,18 @@ public class RouletteListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null) return;
 
-        Player player = event.getPlayer();
-        MachineManager mm = plugin.getMachineManager();
+        Player      player = event.getPlayer();
+        MachineManager mm  = plugin.getMachineManager();
         if (!mm.isRouletteTable(block.getLocation())) return;
 
         event.setCancelled(true);
-        openBetUI(player, block.getLocation().add(0.5, 0, 0.5));
+
+        // Use the registered table display center if available, else block-center
+        RouletteTableDisplay td = mm.getTableDisplay(block.getLocation());
+        Location tableCenter = (td != null) ? td.getCenter()
+                : block.getLocation().clone().add(0.5, 0, 0.5);
+
+        openBetUI(player, tableCenter);
     }
 
     public void openBetUI(Player player) {
@@ -68,7 +74,6 @@ public class RouletteListener implements Listener {
 
         RouletteBetUI ui = openUIs.get(player.getUniqueId());
         if (ui == null) return;
-
         ui.handleClick(event.getSlot());
     }
 
@@ -80,16 +85,18 @@ public class RouletteListener implements Listener {
         RouletteBetUI ui = openUIs.remove(player.getUniqueId());
         if (ui == null) return;
 
-        // If the game hasn't started yet (no active running game), clean up the pending game
         RouletteGame game = ui.getGame();
         if (game != null && game.getState() == com.himacasino.core.GameBase.GameState.IDLE) {
-            // Refund any bets placed
+            // Refund bets
             double refund = game.getTotalBet();
             if (refund > 0 && plugin.getEconomyManager().isEnabled()) {
                 plugin.getEconomyManager().deposit(player, refund);
                 player.sendMessage(String.format("§7ルーレットUIを閉じました。§e%.0f %s §7を返金します。",
                         refund, plugin.getConfigLoader().getCurrencySymbol()));
             }
+            // Clear physical coins
+            RouletteTableDisplay td = plugin.getMachineManager().getTableDisplay(ui.getTableCenter());
+            if (td != null) td.clearBetCoins();
             plugin.getGameManager().removeRouletteGame(player);
         }
     }

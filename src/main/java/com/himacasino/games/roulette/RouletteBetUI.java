@@ -26,170 +26,132 @@ public class RouletteBetUI {
 
     public static final String TITLE = "§4ルーレット §7- ベット";
 
-    // Slot indices for special items
-    public static final int SLOT_ZERO = 0;
-    public static final int SLOT_CHIP_10   = 1;
-    public static final int SLOT_CHIP_50   = 2;
-    public static final int SLOT_CHIP_100  = 3;
-    public static final int SLOT_CHIP_500  = 4;
-    public static final int SLOT_CHIP_1000 = 5;
-    public static final int SLOT_SPIN      = 8;
+    public static final int SLOT_ZERO     = 0;
+    public static final int SLOT_CHIP_10  = 1;
+    public static final int SLOT_CHIP_50  = 2;
+    public static final int SLOT_CHIP_100 = 3;
+    public static final int SLOT_CHIP_500 = 4;
+    public static final int SLOT_CHIP_1000= 5;
+    public static final int SLOT_SPIN     = 8;
 
-    public static final int SLOT_RED    = 45;
-    public static final int SLOT_BLACK  = 46;
-    public static final int SLOT_EVEN   = 47;
-    public static final int SLOT_ODD    = 48;
-    public static final int SLOT_LOW    = 49;
-    public static final int SLOT_HIGH   = 50;
-    public static final int SLOT_1ST12  = 51;
-    public static final int SLOT_2ND12  = 52;
-    public static final int SLOT_3RD12  = 53;
+    public static final int SLOT_RED   = 45;
+    public static final int SLOT_BLACK = 46;
+    public static final int SLOT_EVEN  = 47;
+    public static final int SLOT_ODD   = 48;
+    public static final int SLOT_LOW   = 49;
+    public static final int SLOT_HIGH  = 50;
+    public static final int SLOT_1ST12 = 51;
+    public static final int SLOT_2ND12 = 52;
+    public static final int SLOT_3RD12 = 53;
 
     public static final double[] CHIP_VALUES = {10, 50, 100, 500, 1000};
 
     private final HimaCasino plugin;
-    private final Player player;
-    private final Location tableCenter;
+    private final Player     player;
+    private final Location   tableCenter;
     private RouletteGame game;
-    private Inventory inventory;
-    private double selectedChip = 10;
+    private Inventory    inventory;
+    private double       selectedChip = 10;
 
     public RouletteBetUI(HimaCasino plugin, Player player, Location tableCenter) {
-        this.plugin = plugin;
-        this.player = player;
-        this.tableCenter = tableCenter;
+        this.plugin       = plugin;
+        this.player       = player;
+        this.tableCenter  = tableCenter;
     }
 
     public void open() {
         game = new RouletteGame(plugin, player, tableCenter);
         plugin.getGameManager().registerRouletteGame(player, game);
-
         inventory = plugin.getServer().createInventory(null, 54, TITLE);
         buildLayout();
         player.openInventory(inventory);
     }
 
     private void buildLayout() {
-        // Background
         ItemStack bg = makeItem(Material.GRAY_STAINED_GLASS_PANE, "§0", null);
         for (int i = 0; i < 54; i++) inventory.setItem(i, bg);
 
-        // Zero pocket (green)
         inventory.setItem(SLOT_ZERO, makeNumber(0));
 
-        // Chip buttons
-        double[] chipVals = CHIP_VALUES;
-        int[] chipSlots = {SLOT_CHIP_10, SLOT_CHIP_50, SLOT_CHIP_100, SLOT_CHIP_500, SLOT_CHIP_1000};
+        double[] chipVals  = CHIP_VALUES;
+        int[]    chipSlots = {SLOT_CHIP_10, SLOT_CHIP_50, SLOT_CHIP_100, SLOT_CHIP_500, SLOT_CHIP_1000};
         Material[] chipMats = {Material.IRON_NUGGET, Material.GOLD_NUGGET, Material.IRON_INGOT,
                 Material.GOLD_INGOT, Material.NETHERITE_INGOT};
         for (int i = 0; i < chipSlots.length; i++) {
-            boolean selected = (chipVals[i] == selectedChip);
-            String name = (selected ? "§a§l" : "§e") + "チップ " + formatChip((int) chipVals[i]);
-            List<String> lore = new ArrayList<>();
-            lore.add("§7クリックで選択");
-            if (selected) lore.add("§a§l▶ 選択中");
-            inventory.setItem(chipSlots[i], makeItem(chipMats[i], name, lore));
+            boolean sel  = (chipVals[i] == selectedChip);
+            String  name = (sel ? "§a§l" : "§e") + "チップ " + formatChip((int) chipVals[i]);
+            inventory.setItem(chipSlots[i], makeItem(chipMats[i], name,
+                    sel ? List.of("§a§l▶ 選択中") : List.of("§7クリックで選択")));
         }
 
-        // Spin button
         inventory.setItem(SLOT_SPIN, makeItem(Material.LIME_CONCRETE,
-                "§a§l▶▶ スピン！",
-                List.of("§7ベット後にクリックして回転")));
+                "§a§l▶▶ スピン！", List.of("§7ベット後にクリックして回転")));
 
-        // Numbers 1–36
-        for (int n = 1; n <= 36; n++) {
-            inventory.setItem(numberToSlot(n), makeNumber(n));
-        }
+        for (int n = 1; n <= 36; n++) inventory.setItem(numberToSlot(n), makeNumber(n));
 
-        // Color / type bets
-        inventory.setItem(SLOT_RED,   makeItem(Material.RED_WOOL,   "§c§lREDにベット",   List.of("§71:1配当", "§7現在のチップ: §e" + formatChip((int) selectedChip))));
-        inventory.setItem(SLOT_BLACK, makeItem(Material.BLACK_WOOL,  "§8§lBLACKにベット", List.of("§71:1配当", "§7現在のチップ: §e" + formatChip((int) selectedChip))));
-        inventory.setItem(SLOT_EVEN,  makeItem(Material.LIGHT_BLUE_WOOL, "§b§lEVEN (偶数)", List.of("§71:1配当")));
-        inventory.setItem(SLOT_ODD,   makeItem(Material.YELLOW_WOOL, "§e§lODD (奇数)",   List.of("§71:1配当")));
-        inventory.setItem(SLOT_LOW,   makeItem(Material.GREEN_WOOL,  "§a§lLOW (1–18)",  List.of("§71:1配当")));
-        inventory.setItem(SLOT_HIGH,  makeItem(Material.ORANGE_WOOL, "§6§lHIGH (19–36)",List.of("§71:1配当")));
-        inventory.setItem(SLOT_1ST12, makeItem(Material.PINK_WOOL,   "§d§l1st 12 (1–12)",  List.of("§72:1配当")));
-        inventory.setItem(SLOT_2ND12, makeItem(Material.PURPLE_WOOL, "§5§l2nd 12 (13–24)", List.of("§72:1配当")));
-        inventory.setItem(SLOT_3RD12, makeItem(Material.CYAN_WOOL,   "§3§l3rd 12 (25–36)", List.of("§72:1配当")));
+        inventory.setItem(SLOT_RED,   makeItem(Material.RED_WOOL,        "§c§lREDにベット",   List.of("§71:1配当")));
+        inventory.setItem(SLOT_BLACK, makeItem(Material.BLACK_WOOL,       "§8§lBLACKにベット", List.of("§71:1配当")));
+        inventory.setItem(SLOT_EVEN,  makeItem(Material.LIGHT_BLUE_WOOL,  "§b§lEVEN (偶数)",  List.of("§71:1配当")));
+        inventory.setItem(SLOT_ODD,   makeItem(Material.YELLOW_WOOL,      "§e§lODD (奇数)",   List.of("§71:1配当")));
+        inventory.setItem(SLOT_LOW,   makeItem(Material.GREEN_WOOL,       "§a§lLOW (1–18)",   List.of("§71:1配当")));
+        inventory.setItem(SLOT_HIGH,  makeItem(Material.ORANGE_WOOL,      "§6§lHIGH (19–36)", List.of("§71:1配当")));
+        inventory.setItem(SLOT_1ST12, makeItem(Material.PINK_WOOL,        "§d§l1st 12 (1–12)",  List.of("§72:1配当")));
+        inventory.setItem(SLOT_2ND12, makeItem(Material.PURPLE_WOOL,      "§5§l2nd 12 (13–24)", List.of("§72:1配当")));
+        inventory.setItem(SLOT_3RD12, makeItem(Material.CYAN_WOOL,        "§3§l3rd 12 (25–36)", List.of("§72:1配当")));
     }
 
     private ItemStack makeNumber(int number) {
         Material mat;
-        String colorCode;
+        String   col;
         if (number == 0) {
-            mat = Material.GREEN_STAINED_GLASS_PANE;
-            colorCode = "§a";
+            mat = Material.GREEN_STAINED_GLASS_PANE; col = "§a";
         } else if (RouletteGame.isRed(number)) {
-            mat = Material.RED_STAINED_GLASS_PANE;
-            colorCode = "§c";
+            mat = Material.RED_STAINED_GLASS_PANE;   col = "§c";
         } else {
-            mat = Material.BLACK_STAINED_GLASS_PANE;
-            colorCode = "§8";
+            mat = Material.BLACK_STAINED_GLASS_PANE; col = "§8";
         }
-        return makeItem(mat, colorCode + "§l" + number,
+        return makeItem(mat, col + "§l" + number,
                 List.of("§735:1配当", "§7チップ: §e" + formatChip((int) selectedChip)));
     }
 
-    /** Maps number 1–36 to inventory slot. */
-    public static int numberToSlot(int n) {
-        // Row 1: 1–9  → slots 9–17
-        // Row 2: 10–18 → slots 18–26
-        // Row 3: 19–27 → slots 27–35
-        // Row 4: 28–36 → slots 36–44
-        return 9 + (n - 1);
-    }
+    public static int numberToSlot(int n) { return 9 + (n - 1); }
 
-    /** Returns number (1–36) from slot, or -1 if not a number slot. */
     public static int slotToNumber(int slot) {
         if (slot >= 9 && slot <= 44) {
-            int n = slot - 9 + 1;
+            int n = slot - 8;
             if (n >= 1 && n <= 36) return n;
         }
         return -1;
     }
 
     public void handleClick(int slot) {
-        // Chip selection
-        double[] chipVals = CHIP_VALUES;
-        int[] chipSlots = {SLOT_CHIP_10, SLOT_CHIP_50, SLOT_CHIP_100, SLOT_CHIP_500, SLOT_CHIP_1000};
+        double[] chipVals  = CHIP_VALUES;
+        int[]    chipSlots = {SLOT_CHIP_10, SLOT_CHIP_50, SLOT_CHIP_100, SLOT_CHIP_500, SLOT_CHIP_1000};
         for (int i = 0; i < chipSlots.length; i++) {
-            if (slot == chipSlots[i]) {
-                selectedChip = chipVals[i];
-                buildLayout(); // refresh to show selection
-                return;
-            }
+            if (slot == chipSlots[i]) { selectedChip = chipVals[i]; buildLayout(); return; }
         }
 
-        // Spin
         if (slot == SLOT_SPIN) {
-            if (!game.hasAnyBet()) {
-                player.sendMessage("§cまずベットしてください！");
-                return;
-            }
+            if (!game.hasAnyBet()) { player.sendMessage("§cまずベットしてください！"); return; }
             player.closeInventory();
             game.onStart();
             return;
         }
 
-        // Zero
         if (slot == SLOT_ZERO) {
-            game.placeBetOnNumber(0, selectedChip);
-            refreshBetInfo();
-            return;
+            if (game.placeBetOnNumber(0, selectedChip)) updateNumberCoin(0);
+            refreshBetInfo(); return;
         }
 
-        // Number
         int number = slotToNumber(slot);
         if (number != -1) {
-            game.placeBetOnNumber(number, selectedChip);
-            refreshBetInfo();
-            return;
+            if (game.placeBetOnNumber(number, selectedChip)) updateNumberCoin(number);
+            refreshBetInfo(); return;
         }
 
-        // Color/type bets
         switch (slot) {
-            case SLOT_RED   -> game.placeBetOnColor("red",   selectedChip);
-            case SLOT_BLACK -> game.placeBetOnColor("black", selectedChip);
+            case SLOT_RED   -> { if (game.placeBetOnColor("red",   selectedChip)) updateColorCoin("red");   }
+            case SLOT_BLACK -> { if (game.placeBetOnColor("black", selectedChip)) updateColorCoin("black"); }
             case SLOT_EVEN  -> placeEvenOddBet(true);
             case SLOT_ODD   -> placeEvenOddBet(false);
             case SLOT_LOW   -> placeHighLowBet(false);
@@ -201,18 +163,38 @@ public class RouletteBetUI {
         refreshBetInfo();
     }
 
+    // ── Coin helpers ───────────────────────────────────────────────────────
+
+    private RouletteTableDisplay tableDisplay() {
+        return plugin.getMachineManager().getTableDisplay(tableCenter);
+    }
+
+    private void updateNumberCoin(int number) {
+        RouletteTableDisplay td = tableDisplay();
+        if (td == null) return;
+        double total = game.numberBets.getOrDefault(number, 0.0);
+        td.updateNumberCoin(number, total);
+    }
+
+    private void updateColorCoin(String color) {
+        RouletteTableDisplay td = tableDisplay();
+        if (td == null) return;
+        double total = game.colorBets.getOrDefault(color, 0.0);
+        td.updateColorCoin(color, total);
+    }
+
+    // ── Spread bets (no individual coins for performance) ─────────────────
+
     private void placeEvenOddBet(boolean even) {
-        for (int n = 1; n <= 36; n++) {
+        for (int n = 1; n <= 36; n++)
             if ((n % 2 == 0) == even) game.placeBetOnNumber(n, selectedChip / 18.0);
-        }
         player.sendMessage(String.format("§7%s に §6%.0f %s §7をベット",
                 even ? "§bEVEN" : "§eODD", selectedChip,
                 plugin.getConfigLoader().getCurrencySymbol()));
     }
 
     private void placeHighLowBet(boolean high) {
-        int start = high ? 19 : 1;
-        int end   = high ? 36 : 18;
+        int start = high ? 19 : 1, end = high ? 36 : 18;
         for (int n = start; n <= end; n++) game.placeBetOnNumber(n, selectedChip / 18.0);
         player.sendMessage(String.format("§7%s に §6%.0f %s §7をベット",
                 high ? "§6HIGH" : "§aLOW", selectedChip,
@@ -228,7 +210,6 @@ public class RouletteBetUI {
     }
 
     private void refreshBetInfo() {
-        // Update spin button with total bet
         inventory.setItem(SLOT_SPIN, makeItem(Material.LIME_CONCRETE,
                 "§a§l▶▶ スピン！",
                 List.of("§7合計ベット: §e" + formatChip((int) game.getTotalBet()) + " " +
@@ -238,18 +219,19 @@ public class RouletteBetUI {
 
     private ItemStack makeItem(Material mat, String name, List<String> lore) {
         ItemStack item = new ItemStack(mat);
-        ItemMeta meta = item.getItemMeta();
+        ItemMeta  meta = item.getItemMeta();
         meta.setDisplayName(name);
         if (lore != null) meta.setLore(lore);
         item.setItemMeta(meta);
         return item;
     }
 
-    private String formatChip(int value) {
-        if (value >= 1000) return (value / 1000) + "k";
-        return String.valueOf(value);
+    private String formatChip(int v) {
+        if (v >= 1000) return (v / 1000) + "k";
+        return String.valueOf(v);
     }
 
-    public Inventory getInventory() { return inventory; }
-    public RouletteGame getGame() { return game; }
+    public Inventory    getInventory()   { return inventory; }
+    public RouletteGame getGame()        { return game; }
+    public Location     getTableCenter() { return tableCenter; }
 }
