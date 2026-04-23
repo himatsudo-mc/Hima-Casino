@@ -298,7 +298,7 @@ public class HorseWheelGame extends GameBase {
                         new AxisAngle4f(0, 0, 1, 0),
                         new Vector3f(0.45f, 0.08f, 0.45f),
                         new AxisAngle4f(0, 0, 1, 0)));
-                d.setBillboardType(Display.Billboard.FIXED);
+                d.setBillboard(Display.Billboard.FIXED);
                 d.setViewRange(32);
             });
             wheelSegments.add(seg);
@@ -312,7 +312,7 @@ public class HorseWheelGame extends GameBase {
                     new AxisAngle4f(0, 0, 1, 0),
                     new Vector3f(0.55f, 0.09f, 0.55f),
                     new AxisAngle4f(0, 0, 1, 0)));
-            d.setBillboardType(Display.Billboard.FIXED);
+            d.setBillboard(Display.Billboard.FIXED);
             d.setViewRange(32);
         });
 
@@ -332,7 +332,7 @@ public class HorseWheelGame extends GameBase {
                     new AxisAngle4f(0, 0, 1, 0),
                     new Vector3f(0.28f, 0.28f, 0.28f),
                     new AxisAngle4f(0, 0, 1, 0)));
-            d.setBillboardType(Display.Billboard.FIXED);
+            d.setBillboard(Display.Billboard.FIXED);
             d.setViewRange(32);
         });
     }
