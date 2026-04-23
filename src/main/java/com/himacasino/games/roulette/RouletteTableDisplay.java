@@ -1,7 +1,7 @@
 package com.himacasino.games.roulette;
 
 import com.himacasino.HimaCasino;
-import org.bukkit.Display;
+import org.bukkit.entity.Display;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
