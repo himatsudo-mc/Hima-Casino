@@ -26,10 +26,6 @@ public class GameManager {
 
     // ── Slots ──────────────────────────────────────────────────────────────
 
-    public SlotsGame getSlotsGame(Player player) {
-        return slots.get(player.getUniqueId());
-    }
-
     public void registerSlotsGame(Player player, SlotsGame game) {
         slots.put(player.getUniqueId(), game);
     }

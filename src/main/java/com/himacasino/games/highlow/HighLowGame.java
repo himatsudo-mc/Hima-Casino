@@ -468,8 +468,4 @@ public class HighLowGame extends GameBase {
         };
     }
 
-    // ── Accessors ──────────────────────────────────────────────────────────
-
-    public Inventory getMainInventory() { return mainInv; }
-    public Inventory getBetInventory()  { return betInv; }
 }

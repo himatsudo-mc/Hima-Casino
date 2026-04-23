@@ -36,8 +36,8 @@ import java.util.UUID;
 public class RouletteTableDisplay {
 
     // ── Wheel geometry ─────────────────────────────────────────────────────
-    private static final int     POCKET_COUNT    = RouletteGame.WHEEL_ORDER.length; // 37
-    private static final double[] POCKET_ANGLES  = new double[POCKET_COUNT];
+    private static final int     POCKET_COUNT   = RouletteGame.WHEEL_ORDER.length; // 37
+    private static final double[] POCKET_ANGLES = new double[POCKET_COUNT];
     static {
         for (int i = 0; i < POCKET_COUNT; i++)
             POCKET_ANGLES[i] = (2 * Math.PI / POCKET_COUNT) * i;
@@ -46,30 +46,29 @@ public class RouletteTableDisplay {
     private static final float POCKET_RADIUS     = 1.35f;
     private static final float CENTER_DISK_SCALE = 1.1f;
     private static final float POCKET_SCALE      = 0.28f;
-    private static final float IDLE_OMEGA        = 0.018f; // rad per tick
+    private static final float IDLE_OMEGA        = 0.018f;
 
     // ── Table geometry ─────────────────────────────────────────────────────
-    // Betting grid extends in +Z from wheel center
-    static final float TABLE_Z_START = 2.0f;   // zero-cell Z offset
-    static final float CELL_X        = 0.60f;  // column spacing
-    static final float CELL_Z        = 0.56f;  // row spacing
-    static final float TABLE_HEIGHT  = 0.07f;  // Y of table surface
+    private static final float TABLE_Z_START = 2.0f;
+    private static final float CELL_X        = 0.60f;
+    private static final float CELL_Z        = 0.56f;
+    private static final float TABLE_HEIGHT  = 0.07f;
 
     private final HimaCasino plugin;
-    private final UUID       tableId;
-    final Location           center;
+    private final UUID        tableId;
+    private final Location    center;
 
     // ── Permanent entities ─────────────────────────────────────────────────
-    ItemDisplay centerDisk;
-    final ItemDisplay[] pocketDisplays = new ItemDisplay[POCKET_COUNT];
+    private ItemDisplay          centerDisk;
+    private final ItemDisplay[]  pocketDisplays = new ItemDisplay[POCKET_COUNT];
 
     // ── Bet coins (betKey → entity) ────────────────────────────────────────
     private final Map<String, ItemDisplay> betCoins = new HashMap<>();
 
     // ── State ──────────────────────────────────────────────────────────────
-    int     highlightedPocket = -1;
-    boolean gameActive        = false;
-    private float      idleAngle = 0f;
+    private int     highlightedPocket = -1;
+    private boolean gameActive        = false;
+    private float   idleAngle         = 0f;
     private BukkitTask idleTask;
 
     public RouletteTableDisplay(HimaCasino plugin, Location center) {
@@ -90,11 +89,9 @@ public class RouletteTableDisplay {
     private void spawnWheel() {
         World world = center.getWorld();
 
-        // 1. Wheel base: large flat dark disk (lowest layer)
         track(flatItem(world, center.clone().add(0, 0.00, 0),
                 Material.DARK_OAK_LOG, 3.3f, 3.3f, 0.07f, 0));
 
-        // 2. Ball track: 18 small white segments around the rim
         int segs = 18;
         float rimR = 1.58f;
         for (int i = 0; i < segs; i++) {
@@ -104,7 +101,6 @@ public class RouletteTableDisplay {
                     Material.WHITE_CONCRETE, 0.13f));
         }
 
-        // 3. Pocket ring: 37 colored flat blocks
         for (int i = 0; i < POCKET_COUNT; i++) {
             int    number = RouletteGame.WHEEL_ORDER[i];
             double angle  = POCKET_ANGLES[i];
@@ -126,7 +122,6 @@ public class RouletteTableDisplay {
             });
             plugin.getDisplayManager().trackDisplay(tableId, pocketDisplays[i]);
 
-            // Number label above pocket
             String col = number == 0 ? "§a" : (RouletteGame.isRed(number) ? "§c" : "§7");
             Location nLoc = center.clone().add(px, 0.22, pz);
             TextDisplay lbl = plugin.getDisplayManager().spawnTextDisplay(
@@ -136,7 +131,6 @@ public class RouletteTableDisplay {
             plugin.getDisplayManager().trackDisplay(tableId, lbl);
         }
 
-        // 4. Center disk (spinning, on top of wheel base)
         centerDisk = world.spawn(center.clone().add(0, 0.05, 0), ItemDisplay.class, d -> {
             d.setItemStack(new ItemStack(Material.DARK_OAK_LOG));
             d.setBillboard(Display.Billboard.FIXED);
@@ -151,7 +145,6 @@ public class RouletteTableDisplay {
         });
         plugin.getDisplayManager().trackDisplay(tableId, centerDisk);
 
-        // 5. Center post (decorative upright stub)
         track(world.spawn(center.clone().add(0, 0.14, 0), ItemDisplay.class, d -> {
             d.setItemStack(new ItemStack(Material.DARK_OAK_LOG));
             d.setBillboard(Display.Billboard.FIXED);
@@ -164,7 +157,6 @@ public class RouletteTableDisplay {
             d.setPersistent(false);
         }));
 
-        // 6. Roulette title above wheel
         TextDisplay title = plugin.getDisplayManager().spawnTextDisplay(
                 center.clone().add(0, 1.0, 0), "§6§lROULETTE", 1.4f);
         title.setPersistent(false);
@@ -174,31 +166,20 @@ public class RouletteTableDisplay {
     private void spawnBettingTable() {
         World world = center.getWorld();
 
-        // Grid extents:
-        //   Z: TABLE_Z_START to TABLE_Z_START + 13*CELL_Z  ≈ 2.0 to 9.28
-        // Outside bets at 9.28 + 0.56 = 9.84
-        float tableLen   = 13 * CELL_Z + 1.0f;         // ~8.28
+        float tableLen    = 13 * CELL_Z + 1.0f;
         float tableCenterZ = TABLE_Z_START + tableLen / 2f - 0.2f;
 
-        // Table frame (dark wood border, slightly larger)
         track(flatItem(world, center.clone().add(0, TABLE_HEIGHT - 0.03f, tableCenterZ),
                 Material.DARK_OAK_PLANKS,
                 3 * CELL_X + 0.55f, tableLen + 0.35f, 0.04f, 0));
 
-        // Table surface (green felt)
         track(flatItem(world, center.clone().add(0, TABLE_HEIGHT - 0.01f, tableCenterZ),
                 Material.GREEN_CONCRETE,
                 3 * CELL_X + 0.15f, tableLen + 0.0f, 0.04f, 0));
 
-        // Zero cell
         spawnGridLabel(world, 0, getBetPos(0));
+        for (int n = 1; n <= 36; n++) spawnGridLabel(world, n, getBetPos(n));
 
-        // Numbers 1–36
-        for (int n = 1; n <= 36; n++) {
-            spawnGridLabel(world, n, getBetPos(n));
-        }
-
-        // Outside bet labels
         float outsideZ = TABLE_Z_START + 13 * CELL_Z + 0.28f;
         textLabel(world, center.clone().add( CELL_X, TABLE_HEIGHT + 0.01, outsideZ), "§c§lRED",   0.85f);
         textLabel(world, center.clone().add(     0f, TABLE_HEIGHT + 0.01, outsideZ), "§7§lEVEN", 0.70f);
@@ -207,8 +188,7 @@ public class RouletteTableDisplay {
 
     private void spawnGridLabel(World world, int number, float[] pos) {
         String col = number == 0 ? "§a" : (RouletteGame.isRed(number) ? "§c" : "§8");
-        textLabel(world,
-                center.clone().add(pos[0], TABLE_HEIGHT + 0.01, pos[1]),
+        textLabel(world, center.clone().add(pos[0], TABLE_HEIGHT + 0.01, pos[1]),
                 col + "§l" + number, 0.72f);
     }
 
@@ -218,7 +198,6 @@ public class RouletteTableDisplay {
         plugin.getDisplayManager().trackDisplay(tableId, td);
     }
 
-    // Helper: spawn a flat (horizontally laid) ItemDisplay block
     private ItemDisplay flatItem(World world, Location loc,
                                   Material mat, float sx, float sz, float sy, float yaw) {
         return world.spawn(loc, ItemDisplay.class, d -> {
@@ -234,7 +213,6 @@ public class RouletteTableDisplay {
         });
     }
 
-    // Helper: spawn a small cube-ish ItemDisplay
     private ItemDisplay smallItem(World world, Location loc, Material mat, float scale) {
         return world.spawn(loc, ItemDisplay.class, d -> {
             d.setItemStack(new ItemStack(mat));
@@ -273,7 +251,6 @@ public class RouletteTableDisplay {
 
     // ── Bet coin management ────────────────────────────────────────────────
 
-    /** Spawn/update a coin at a number's grid position showing the current total. */
     public void updateNumberCoin(int number, double totalAmount) {
         String key = "n_" + number;
         removeCoin(key);
@@ -281,13 +258,12 @@ public class RouletteTableDisplay {
         spawnCoin(key, pos[0], pos[1], totalAmount, Material.GOLD_NUGGET, "§e");
     }
 
-    /** Spawn/update a coin at a color's grid position. */
     public void updateColorCoin(String color, double totalAmount) {
         removeCoin(color);
         float[] pos = getColorBetPos(color);
         if (pos == null) return;
         Material mat = color.equals("red") ? Material.RED_DYE : Material.INK_SAC;
-        String  col  = color.equals("red") ? "§c" : "§8";
+        String   col = color.equals("red") ? "§c" : "§8";
         spawnCoin(color, pos[0], pos[1], totalAmount, mat, col);
     }
 
@@ -353,20 +329,16 @@ public class RouletteTableDisplay {
 
     // ── Grid coordinate helpers ────────────────────────────────────────────
 
-    /**
-     * Returns (relX, relZ) offset from center for a number's grid cell.
-     * Layout: 0 at top-center; 1=east, 2=center, 3=west; rows extend south.
-     */
-    static float[] getBetPos(int number) {
+    private static float[] getBetPos(int number) {
         if (number == 0) return new float[]{0f, TABLE_Z_START};
-        int row = (number - 1) / 3;   // 0–11
+        int row = (number - 1) / 3;
         int mod = number % 3;
         float x = (mod == 1) ? CELL_X : (mod == 2) ? 0f : -CELL_X;
         float z = TABLE_Z_START + CELL_Z + row * CELL_Z;
         return new float[]{x, z};
     }
 
-    static float[] getColorBetPos(String key) {
+    private static float[] getColorBetPos(String key) {
         float z = TABLE_Z_START + 13 * CELL_Z + 0.28f;
         return switch (key) {
             case "red"   -> new float[]{ CELL_X, z};
@@ -385,10 +357,11 @@ public class RouletteTableDisplay {
 
     // ── Accessors ──────────────────────────────────────────────────────────
 
-    public UUID        getTableId()         { return tableId; }
-    public Location    getCenter()          { return center.clone(); }
-    public ItemDisplay getCenterDisk()      { return centerDisk; }
-    public ItemDisplay[] getPocketDisplays(){ return pocketDisplays; }
+    public UUID        getTableId()    { return tableId; }
+    public Location    getCenter()     { return center.clone(); }
+    public ItemDisplay getCenterDisk() { return centerDisk; }
+    public boolean     isGameActive()  { return gameActive; }
+    public void        setGameActive(boolean active) { this.gameActive = active; }
 
     private static Material pocketMaterial(int number) {
         if (number == 0) return Material.LIME_CONCRETE;

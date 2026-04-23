@@ -172,15 +172,13 @@ public class RouletteBetUI {
     private void updateNumberCoin(int number) {
         RouletteTableDisplay td = tableDisplay();
         if (td == null) return;
-        double total = game.numberBets.getOrDefault(number, 0.0);
-        td.updateNumberCoin(number, total);
+        td.updateNumberCoin(number, game.getNumberBetTotal(number));
     }
 
     private void updateColorCoin(String color) {
         RouletteTableDisplay td = tableDisplay();
         if (td == null) return;
-        double total = game.colorBets.getOrDefault(color, 0.0);
-        td.updateColorCoin(color, total);
+        td.updateColorCoin(color, game.getColorBetTotal(color));
     }
 
     // ── Spread bets (no individual coins for performance) ─────────────────

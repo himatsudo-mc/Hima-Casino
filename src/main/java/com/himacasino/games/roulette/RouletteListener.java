@@ -33,13 +33,12 @@ public class RouletteListener implements Listener {
         Block block = event.getClickedBlock();
         if (block == null) return;
 
-        Player      player = event.getPlayer();
-        MachineManager mm  = plugin.getMachineManager();
+        Player     player = event.getPlayer();
+        MachineManager mm = plugin.getMachineManager();
         if (!mm.isRouletteTable(block.getLocation())) return;
 
         event.setCancelled(true);
 
-        // Use the registered table display center if available, else block-center
         RouletteTableDisplay td = mm.getTableDisplay(block.getLocation());
         Location tableCenter = (td != null) ? td.getCenter()
                 : block.getLocation().clone().add(0.5, 0, 0.5);
@@ -47,13 +46,25 @@ public class RouletteListener implements Listener {
         openBetUI(player, tableCenter);
     }
 
+    /** Opens the bet UI at the nearest registered roulette table (command-triggered). */
     public void openBetUI(Player player) {
-        openBetUI(player, player.getLocation());
+        RouletteTableDisplay td = plugin.getMachineManager()
+                .getNearestRouletteDisplay(player.getLocation(), 20);
+        if (td == null) {
+            player.sendMessage("§c近くにルーレットテーブルがありません。");
+            return;
+        }
+        openBetUI(player, td.getCenter());
     }
 
     public void openBetUI(Player player, Location tableCenter) {
         if (plugin.getGameManager().hasActiveGame(player)) {
             player.sendMessage("§c現在進行中のゲームがあります。");
+            return;
+        }
+        RouletteTableDisplay td = plugin.getMachineManager().getTableDisplay(tableCenter);
+        if (td != null && td.isGameActive()) {
+            player.sendMessage("§cこのテーブルでは現在別のゲームが進行中です。");
             return;
         }
         RouletteBetUI ui = new RouletteBetUI(plugin, player, tableCenter);
@@ -87,21 +98,15 @@ public class RouletteListener implements Listener {
 
         RouletteGame game = ui.getGame();
         if (game != null && game.getState() == com.himacasino.core.GameBase.GameState.IDLE) {
-            // Refund bets
             double refund = game.getTotalBet();
             if (refund > 0 && plugin.getEconomyManager().isEnabled()) {
                 plugin.getEconomyManager().deposit(player, refund);
                 player.sendMessage(String.format("§7ルーレットUIを閉じました。§e%.0f %s §7を返金します。",
                         refund, plugin.getConfigLoader().getCurrencySymbol()));
             }
-            // Clear physical coins
             RouletteTableDisplay td = plugin.getMachineManager().getTableDisplay(ui.getTableCenter());
             if (td != null) td.clearBetCoins();
             plugin.getGameManager().removeRouletteGame(player);
         }
-    }
-
-    public void registerUI(Player player, RouletteBetUI ui) {
-        openUIs.put(player.getUniqueId(), ui);
     }
 }

@@ -9,7 +9,6 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
-import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.*;
@@ -29,22 +28,6 @@ public class DisplayManager {
             d.setItemStack(item);
             d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
             d.setBillboard(Display.Billboard.FIXED);
-            d.setTransformation(new Transformation(
-                    new Vector3f(0, 0, 0),
-                    new AxisAngle4f(0, 0, 1, 0),
-                    new Vector3f(scale, scale, scale),
-                    new AxisAngle4f(0, 0, 1, 0)
-            ));
-            d.setInterpolationDuration(2);
-        });
-    }
-
-    public ItemDisplay spawnItemDisplayBillboard(Location location, ItemStack item, float scale) {
-        World world = location.getWorld();
-        return world.spawn(location, ItemDisplay.class, d -> {
-            d.setItemStack(item);
-            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.GUI);
-            d.setBillboard(Display.Billboard.VERTICAL);
             d.setTransformation(new Transformation(
                     new Vector3f(0, 0, 0),
                     new AxisAngle4f(0, 0, 1, 0),
@@ -77,20 +60,6 @@ public class DisplayManager {
     public void removeGameDisplays(UUID gameId) {
         List<Display> list = tracked.remove(gameId);
         if (list != null) list.forEach(d -> { if (d.isValid()) d.remove(); });
-    }
-
-    /** Smooth rotation update for an ItemDisplay (spin around Y axis). */
-    public void setRotationY(ItemDisplay display, float angle, int interpolationTicks) {
-        display.setInterpolationDelay(0);
-        display.setInterpolationDuration(interpolationTicks);
-        Transformation prev = display.getTransformation();
-        // getLeftRotation() returns Quaternionf; right rotation must also be Quaternionf
-        display.setTransformation(new Transformation(
-                prev.getTranslation(),
-                prev.getLeftRotation(),
-                prev.getScale(),
-                new Quaternionf().rotationY(angle)
-        ));
     }
 
     public void cleanup() {

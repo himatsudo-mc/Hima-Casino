@@ -15,8 +15,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class HimaCasino extends JavaPlugin {
 
-    private static HimaCasino instance;
-
     private ConfigLoader configLoader;
     private EconomyManager economyManager;
     private DisplayManager displayManager;
@@ -26,8 +24,6 @@ public class HimaCasino extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        instance = this;
-
         saveDefaultConfig();
 
         // Core systems
@@ -71,8 +67,6 @@ public class HimaCasino extends JavaPlugin {
     }
 
     // ── Accessors ──────────────────────────────────────────────────────────
-
-    public static HimaCasino getInstance() { return instance; }
 
     public ConfigLoader getConfigLoader()     { return configLoader; }
     public EconomyManager getEconomyManager() { return economyManager; }

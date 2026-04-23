@@ -28,9 +28,9 @@ public class CasinoTabCompleter implements TabCompleter {
         if (args.length == 2) {
             return switch (args[0].toLowerCase()) {
                 case "roulette"    -> StringUtil.copyPartialMatches(args[1],
-                        Arrays.asList("open","spin","red","black","0","1","17","36"), new ArrayList<>());
+                        Arrays.asList("open"), new ArrayList<>());
                 case "setmachine"  -> StringUtil.copyPartialMatches(args[1],
-                        Arrays.asList("slots","roulette"), new ArrayList<>());
+                        Arrays.asList("roulette"), new ArrayList<>());
                 case "setting"     -> StringUtil.copyPartialMatches(args[1],
                         Arrays.asList("1","2","3","4","5","6"), new ArrayList<>());
                 default            -> Collections.emptyList();

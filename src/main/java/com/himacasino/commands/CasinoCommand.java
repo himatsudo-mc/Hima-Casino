@@ -2,10 +2,7 @@ package com.himacasino.commands;
 
 import com.himacasino.HimaCasino;
 import com.himacasino.games.highlow.HighLowGame;
-import com.himacasino.games.roulette.RouletteBetUI;
-import com.himacasino.games.roulette.RouletteGame;
 import com.himacasino.manager.MachineManager;
-import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -33,86 +30,29 @@ public class CasinoCommand implements CommandExecutor {
         }
 
         switch (args[0].toLowerCase()) {
-            case "roulette" -> handleRoulette(player, args);
-            case "highlow"  -> handleHighLow(player, args);
-            case "setting"  -> handleSetting(player, args);
+            case "roulette"   -> handleRoulette(player);
+            case "highlow"    -> handleHighLow(player);
+            case "setting"    -> handleSetting(player, args);
             case "setmachine" -> handleSetMachine(player, args);
             case "delmachine" -> handleDelMachine(player, args);
-            default         -> sendHelp(player);
+            default           -> sendHelp(player);
         }
         return true;
     }
 
-    // ── /casino roulette [<number|red|black> <bet>|spin|open] ─────────────
+    // ── /casino roulette ───────────────────────────────────────────────────
 
-    private void handleRoulette(Player player, String[] args) {
-        if (args.length < 2 || args[1].equalsIgnoreCase("open")) {
-            // Open the betting GUI
-            if (plugin.getGameManager().hasActiveGame(player)) {
-                player.sendMessage("§c現在進行中のゲームがあります。");
-                return;
-            }
-            plugin.getRouletteListener().openBetUI(player);
+    private void handleRoulette(Player player) {
+        if (plugin.getGameManager().hasActiveGame(player)) {
+            player.sendMessage("§c現在進行中のゲームがあります。");
             return;
         }
-
-        if (args[1].equalsIgnoreCase("spin")) {
-            RouletteGame game = plugin.getGameManager().getRouletteGame(player);
-            if (game == null || game.isFinished()) {
-                player.sendMessage("§cルーレットゲームが見つかりません。まずベットしてください。");
-                return;
-            }
-            if (game.getState() != com.himacasino.core.GameBase.GameState.IDLE) {
-                player.sendMessage("§cすでにゲームが進行中です。");
-                return;
-            }
-            game.onStart();
-            return;
-        }
-
-        // /casino roulette <target> <amount>
-        double bet = parseBet(player, args, 2);
-        if (bet < 0) return;
-
-        double min = plugin.getConfigLoader().getRouletteMinBet();
-        double max = plugin.getConfigLoader().getRouletteMaxBet();
-        if (bet < min || bet > max) {
-            player.sendMessage(String.format("§cベット額は §e%.0f §c〜 §e%.0f %s §cにしてください。",
-                    min, max, plugin.getConfigLoader().getCurrencySymbol()));
-            return;
-        }
-
-        // Get or create a pending game
-        RouletteGame game = plugin.getGameManager().getRouletteGame(player);
-        if (game == null || game.isFinished()) {
-            game = new RouletteGame(plugin, player, player.getLocation());
-            plugin.getGameManager().registerRouletteGame(player, game);
-        }
-        if (game.getState() == com.himacasino.core.GameBase.GameState.RUNNING) {
-            player.sendMessage("§cルーレットはすでに回転中です。");
-            return;
-        }
-
-        String target = args[1].toLowerCase();
-        switch (target) {
-            case "red"   -> game.placeBetOnColor("red",   bet);
-            case "black" -> game.placeBetOnColor("black", bet);
-            default -> {
-                try {
-                    int number = Integer.parseInt(target);
-                    if (!game.placeBetOnNumber(number, bet)) {
-                        player.sendMessage("§c無効な数字です (0〜36)。");
-                    }
-                } catch (NumberFormatException e) {
-                    player.sendMessage("§c無効なベット対象です。数字 (0-36)、red、black を指定してください。");
-                }
-            }
-        }
+        plugin.getRouletteListener().openBetUI(player);
     }
 
     // ── /casino highlow ────────────────────────────────────────────────────
 
-    private void handleHighLow(Player player, String[] args) {
+    private void handleHighLow(Player player) {
         if (plugin.getGameManager().hasActiveGame(player)) {
             player.sendMessage("§c現在進行中のゲームがあります。");
             return;
@@ -144,7 +84,7 @@ public class CasinoCommand implements CommandExecutor {
         }
     }
 
-    // ── /casino setmachine <slots|roulette> [setting] ─────────────────────
+    // ── /casino setmachine roulette [setting] ─────────────────────────────
 
     private void handleSetMachine(Player player, String[] args) {
         if (!player.hasPermission("himacasino.admin")) {
@@ -152,7 +92,7 @@ public class CasinoCommand implements CommandExecutor {
             return;
         }
         if (args.length < 2) {
-            player.sendMessage("§e使い方: §f/casino setmachine <slots|roulette> [setting(1-6)]");
+            player.sendMessage("§e使い方: §f/casino setmachine roulette");
             return;
         }
 
@@ -162,13 +102,11 @@ public class CasinoCommand implements CommandExecutor {
             return;
         }
 
-        MachineManager.MachineType type;
-        try {
-            type = MachineManager.MachineType.valueOf(args[1].toUpperCase());
-        } catch (IllegalArgumentException e) {
-            player.sendMessage("§c種類は §eslots §cまたは §eroulette §cを指定してください。");
+        if (!args[1].equalsIgnoreCase("roulette")) {
+            player.sendMessage("§c種類は §eroulette §cを指定してください。");
             return;
         }
+        MachineManager.MachineType type = MachineManager.MachineType.ROULETTE;
 
         int setting = 1;
         if (args.length >= 3) {
@@ -184,11 +122,7 @@ public class CasinoCommand implements CommandExecutor {
         plugin.getMachineManager().addMachine(target.getLocation(), type, setting);
         player.sendMessage(String.format("§a%s を §e%s §aとして登録しました。",
                 target.getType().name(), type.name()));
-        if (type == MachineManager.MachineType.SLOTS) {
-            player.sendMessage("§7プレイヤーが右クリックするとスロットマシンが起動します。");
-        } else {
-            player.sendMessage("§7プレイヤーが右クリックするとルーレットUIが開きます。");
-        }
+        player.sendMessage("§7プレイヤーが右クリックするとルーレットUIが開きます。");
     }
 
     // ── /casino delmachine ────────────────────────────────────────────────
@@ -212,34 +146,17 @@ public class CasinoCommand implements CommandExecutor {
         }
     }
 
-    // ── Helpers ────────────────────────────────────────────────────────────
-
-    private double parseBet(Player player, String[] args, int index) {
-        if (args.length <= index) {
-            player.sendMessage("§cベット額を指定してください。");
-            return -1;
-        }
-        try {
-            double bet = Double.parseDouble(args[index]);
-            if (bet <= 0) throw new NumberFormatException();
-            return bet;
-        } catch (NumberFormatException e) {
-            player.sendMessage("§c有効なベット額を入力してください。");
-            return -1;
-        }
-    }
+    // ── Help ───────────────────────────────────────────────────────────────
 
     private void sendHelp(Player player) {
         player.sendMessage("§6§l══════ HimaCasino ══════");
         player.sendMessage("§7スロット: §f[slot]§7 看板を右クリック");
-        player.sendMessage("§e/casino roulette §f[open]§7 – ルーレットUIを開く");
-        player.sendMessage("§e/casino roulette §f<数字|red|black> <額>§7 – ルーレットベット");
-        player.sendMessage("§e/casino roulette spin§7 – ルーレットを回す");
-        player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ (ベット額はUI内で設定)");
+        player.sendMessage("§e/casino roulette§7 – ルーレットUIを開く");
+        player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ");
         if (player.hasPermission("himacasino.admin")) {
             player.sendMessage("§c§l[管理者]");
             player.sendMessage("§c/casino setting §f<1-6>§7 – スロット設定変更");
-            player.sendMessage("§c/casino setmachine §f<slots|roulette> [setting]§7 – マシン設置");
+            player.sendMessage("§c/casino setmachine §froulette§7 – ルーレットマシン設置");
             player.sendMessage("§c/casino delmachine§7 – マシン削除");
         }
         player.sendMessage("§6§l═══════════════════════");

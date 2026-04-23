@@ -120,8 +120,6 @@ public class MachineManager {
 
     public MachineData getMachineData(Location loc) { return machines.get(locKey(loc)); }
 
-    public boolean isMachine(Location loc) { return machines.containsKey(locKey(loc)); }
-
     /** Returns the permanent roulette table display for a registered location, or null. */
     public RouletteTableDisplay getTableDisplay(Location loc) {
         // Try both the block-floor key and a key with the 0.5 offset stripped
@@ -139,7 +137,18 @@ public class MachineManager {
     public void occupy(Location loc)     { busyMachines.add(locKey(loc)); }
     public void release(Location loc)    { busyMachines.remove(locKey(loc)); }
 
-    public int getMachineCount() { return machines.size(); }
+    /** Returns the nearest roulette table within maxDist blocks, or null. */
+    public RouletteTableDisplay getNearestRouletteDisplay(Location loc, double maxDist) {
+        RouletteTableDisplay nearest = null;
+        double bestDistSq = maxDist * maxDist;
+        for (RouletteTableDisplay td : tableDisplays.values()) {
+            Location c = td.getCenter();
+            if (!c.getWorld().equals(loc.getWorld())) continue;
+            double d = c.distanceSquared(loc);
+            if (d < bestDistSq) { bestDistSq = d; nearest = td; }
+        }
+        return nearest;
+    }
 
     /** Despawns all permanent roulette table displays and cancels idle animations. */
     public void cleanup() {
