@@ -2,6 +2,7 @@ package com.himacasino.commands;
 
 import com.himacasino.HimaCasino;
 import com.himacasino.games.highlow.HighLowGame;
+import com.himacasino.games.horsewheel.HorseWheelGame;
 import com.himacasino.manager.MachineManager;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -30,12 +31,13 @@ public class CasinoCommand implements CommandExecutor {
         }
 
         switch (args[0].toLowerCase()) {
-            case "roulette"   -> handleRoulette(player);
-            case "highlow"    -> handleHighLow(player);
-            case "setting"    -> handleSetting(player, args);
-            case "setmachine" -> handleSetMachine(player, args);
-            case "delmachine" -> handleDelMachine(player, args);
-            default           -> sendHelp(player);
+            case "roulette"    -> handleRoulette(player);
+            case "highlow"     -> handleHighLow(player);
+            case "horsewheel"  -> handleHorseWheel(player);
+            case "setting"     -> handleSetting(player, args);
+            case "setmachine"  -> handleSetMachine(player, args);
+            case "delmachine"  -> handleDelMachine(player, args);
+            default            -> sendHelp(player);
         }
         return true;
     }
@@ -61,6 +63,19 @@ public class CasinoCommand implements CommandExecutor {
         HighLowGame game = new HighLowGame(plugin, player);
         plugin.getGameManager().registerHighLowGame(player, game);
         game.onStart();
+    }
+
+    // ── /casino horsewheel ────────────────────────────────────────────────
+
+    private void handleHorseWheel(Player player) {
+        if (plugin.getGameManager().hasActiveGame(player)) {
+            player.sendMessage("§c現在進行中のゲームがあります。");
+            return;
+        }
+        HorseWheelGame game = new HorseWheelGame(plugin, player);
+        plugin.getGameManager().registerHorseWheelGame(player, game);
+        game.onStart();
+        game.openBetUI();
     }
 
     // ── /casino setting <1-6> ─────────────────────────────────────────────
@@ -153,6 +168,7 @@ public class CasinoCommand implements CommandExecutor {
         player.sendMessage("§7スロット: §f[slot]§7 看板を右クリック");
         player.sendMessage("§e/casino roulette§7 – ルーレットUIを開く");
         player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ");
+        player.sendMessage("§e/casino horsewheel§7 – HORSE WHEEL を遊ぶ");
         if (player.hasPermission("himacasino.admin")) {
             player.sendMessage("§c§l[管理者]");
             player.sendMessage("§c/casino setting §f<1-6>§7 – スロット設定変更");

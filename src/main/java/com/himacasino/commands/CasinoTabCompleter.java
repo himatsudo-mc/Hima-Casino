@@ -18,7 +18,7 @@ public class CasinoTabCompleter implements TabCompleter {
         if (!(sender instanceof Player player)) return Collections.emptyList();
 
         if (args.length == 1) {
-            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow"));
+            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow", "horsewheel"));
             if (player.hasPermission("himacasino.admin")) {
                 sub.addAll(Arrays.asList("setting", "setmachine", "delmachine"));
             }

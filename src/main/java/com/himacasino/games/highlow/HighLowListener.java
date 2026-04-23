@@ -42,10 +42,13 @@ public class HighLowListener implements Listener {
 
         HighLowGame game = plugin.getGameManager().getHighLowGame(player);
         if (game == null || game.isFinished()) return;
+        if (game.isTransitioning()) return; // inventory transition in progress — don't act
 
-        // Only clean up when main screen is closed; closing bet screen leaves game alive
         if (HighLowGame.TITLE.equals(title)) {
             game.cleanup();
+        } else {
+            // Player ESC'd the bet-setting screen — return to main
+            game.returnToMain();
         }
     }
 }
