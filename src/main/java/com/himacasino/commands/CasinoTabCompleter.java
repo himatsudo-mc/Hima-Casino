@@ -18,7 +18,7 @@ public class CasinoTabCompleter implements TabCompleter {
         if (!(sender instanceof Player player)) return Collections.emptyList();
 
         if (args.length == 1) {
-            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow", "horsewheel"));
+            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow"));
             if (player.hasPermission("himacasino.admin")) {
                 sub.addAll(Arrays.asList("setting", "setmachine", "delmachine"));
             }
@@ -27,19 +27,12 @@ public class CasinoTabCompleter implements TabCompleter {
 
         if (args.length == 2) {
             return switch (args[0].toLowerCase()) {
-                case "roulette"    -> StringUtil.copyPartialMatches(args[1],
-                        Arrays.asList("open"), new ArrayList<>());
-                case "setmachine"  -> StringUtil.copyPartialMatches(args[1],
-                        Arrays.asList("roulette"), new ArrayList<>());
-                case "setting"     -> StringUtil.copyPartialMatches(args[1],
+                case "setmachine" -> StringUtil.copyPartialMatches(args[1],
+                        Arrays.asList("roulette", "horsewheel"), new ArrayList<>());
+                case "setting"    -> StringUtil.copyPartialMatches(args[1],
                         Arrays.asList("1","2","3","4","5","6"), new ArrayList<>());
-                default            -> Collections.emptyList();
+                default           -> Collections.emptyList();
             };
-        }
-
-        if (args.length == 3 && args[0].equalsIgnoreCase("setmachine")) {
-            return StringUtil.copyPartialMatches(args[2],
-                    Arrays.asList("1","2","3","4","5","6"), new ArrayList<>());
         }
 
         return Collections.emptyList();

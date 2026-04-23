@@ -2,7 +2,6 @@ package com.himacasino.commands;
 
 import com.himacasino.HimaCasino;
 import com.himacasino.games.highlow.HighLowGame;
-import com.himacasino.games.horsewheel.HorseWheelGame;
 import com.himacasino.manager.MachineManager;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -25,19 +24,15 @@ public class CasinoCommand implements CommandExecutor {
             return true;
         }
 
-        if (args.length == 0) {
-            sendHelp(player);
-            return true;
-        }
+        if (args.length == 0) { sendHelp(player); return true; }
 
         switch (args[0].toLowerCase()) {
-            case "roulette"    -> handleRoulette(player);
-            case "highlow"     -> handleHighLow(player);
-            case "horsewheel"  -> handleHorseWheel(player);
-            case "setting"     -> handleSetting(player, args);
-            case "setmachine"  -> handleSetMachine(player, args);
-            case "delmachine"  -> handleDelMachine(player, args);
-            default            -> sendHelp(player);
+            case "roulette"   -> handleRoulette(player);
+            case "highlow"    -> handleHighLow(player);
+            case "setting"    -> handleSetting(player, args);
+            case "setmachine" -> handleSetMachine(player, args);
+            case "delmachine" -> handleDelMachine(player, args);
+            default           -> sendHelp(player);
         }
         return true;
     }
@@ -59,23 +54,9 @@ public class CasinoCommand implements CommandExecutor {
             player.sendMessage("§c現在進行中のゲームがあります。");
             return;
         }
-
         HighLowGame game = new HighLowGame(plugin, player);
         plugin.getGameManager().registerHighLowGame(player, game);
         game.onStart();
-    }
-
-    // ── /casino horsewheel ────────────────────────────────────────────────
-
-    private void handleHorseWheel(Player player) {
-        if (plugin.getGameManager().hasActiveGame(player)) {
-            player.sendMessage("§c現在進行中のゲームがあります。");
-            return;
-        }
-        HorseWheelGame game = new HorseWheelGame(plugin, player);
-        plugin.getGameManager().registerHorseWheelGame(player, game);
-        game.onStart();
-        game.openBetUI();
     }
 
     // ── /casino setting <1-6> ─────────────────────────────────────────────
@@ -85,10 +66,7 @@ public class CasinoCommand implements CommandExecutor {
             player.sendMessage("§c権限がありません。");
             return;
         }
-        if (args.length < 2) {
-            player.sendMessage("§e使い方: §f/casino setting <1-6>");
-            return;
-        }
+        if (args.length < 2) { player.sendMessage("§e使い方: §f/casino setting <1-6>"); return; }
         try {
             int setting = Integer.parseInt(args[1]);
             if (setting < 1 || setting > 6) throw new NumberFormatException();
@@ -99,7 +77,7 @@ public class CasinoCommand implements CommandExecutor {
         }
     }
 
-    // ── /casino setmachine roulette [setting] ─────────────────────────────
+    // ── /casino setmachine <roulette|horsewheel> ──────────────────────────
 
     private void handleSetMachine(Player player, String[] args) {
         if (!player.hasPermission("himacasino.admin")) {
@@ -107,7 +85,7 @@ public class CasinoCommand implements CommandExecutor {
             return;
         }
         if (args.length < 2) {
-            player.sendMessage("§e使い方: §f/casino setmachine roulette");
+            player.sendMessage("§e使い方: §f/casino setmachine <roulette|horsewheel>");
             return;
         }
 
@@ -117,27 +95,24 @@ public class CasinoCommand implements CommandExecutor {
             return;
         }
 
-        if (!args[1].equalsIgnoreCase("roulette")) {
-            player.sendMessage("§c種類は §eroulette §cを指定してください。");
+        MachineManager.MachineType type = switch (args[1].toLowerCase()) {
+            case "roulette"   -> MachineManager.MachineType.ROULETTE;
+            case "horsewheel" -> MachineManager.MachineType.HORSEWHEEL;
+            default -> null;
+        };
+        if (type == null) {
+            player.sendMessage("§c種類は §eroulette §cまたは §ehorsewheel §cを指定してください。");
             return;
         }
-        MachineManager.MachineType type = MachineManager.MachineType.ROULETTE;
 
-        int setting = 1;
-        if (args.length >= 3) {
-            try {
-                setting = Integer.parseInt(args[2]);
-                if (setting < 1 || setting > 6) throw new NumberFormatException();
-            } catch (NumberFormatException e) {
-                player.sendMessage("§cスロット設定は 1〜6 を指定してください。");
-                return;
-            }
-        }
-
-        plugin.getMachineManager().addMachine(target.getLocation(), type, setting);
+        plugin.getMachineManager().addMachine(target.getLocation(), type, 1);
         player.sendMessage(String.format("§a%s を §e%s §aとして登録しました。",
                 target.getType().name(), type.name()));
-        player.sendMessage("§7プレイヤーが右クリックするとルーレットUIが開きます。");
+        if (type == MachineManager.MachineType.HORSEWHEEL) {
+            player.sendMessage("§7右クリックでHORSE WHEELが開きます。");
+        } else {
+            player.sendMessage("§7プレイヤーが右クリックするとルーレットUIが開きます。");
+        }
     }
 
     // ── /casino delmachine ────────────────────────────────────────────────
@@ -147,13 +122,11 @@ public class CasinoCommand implements CommandExecutor {
             player.sendMessage("§c権限がありません。");
             return;
         }
-
         Block target = player.getTargetBlockExact(5);
         if (target == null) {
             player.sendMessage("§c削除するブロックを見つめてください。");
             return;
         }
-
         if (plugin.getMachineManager().removeMachine(target.getLocation())) {
             player.sendMessage("§aマシンを削除しました。");
         } else {
@@ -168,11 +141,11 @@ public class CasinoCommand implements CommandExecutor {
         player.sendMessage("§7スロット: §f[slot]§7 看板を右クリック");
         player.sendMessage("§e/casino roulette§7 – ルーレットUIを開く");
         player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ");
-        player.sendMessage("§e/casino horsewheel§7 – HORSE WHEEL を遊ぶ");
+        player.sendMessage("§7HORSE WHEEL: 設置されたホイールを右クリック");
         if (player.hasPermission("himacasino.admin")) {
             player.sendMessage("§c§l[管理者]");
             player.sendMessage("§c/casino setting §f<1-6>§7 – スロット設定変更");
-            player.sendMessage("§c/casino setmachine §froulette§7 – ルーレットマシン設置");
+            player.sendMessage("§c/casino setmachine §froulette|horsewheel§7 – マシン設置");
             player.sendMessage("§c/casino delmachine§7 – マシン削除");
         }
         player.sendMessage("§6§l═══════════════════════");

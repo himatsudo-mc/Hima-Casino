@@ -1,6 +1,7 @@
 package com.himacasino.manager;
 
 import com.himacasino.HimaCasino;
+import com.himacasino.games.horsewheel.HorseWheelTableDisplay;
 import com.himacasino.games.roulette.RouletteTableDisplay;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -18,15 +19,16 @@ import java.util.Set;
 public class MachineManager {
 
     public record MachineData(MachineType type, int setting, double betAmount) {}
-    public enum MachineType { SLOTS, ROULETTE }
+    public enum MachineType { SLOTS, ROULETTE, HORSEWHEEL }
 
     private final HimaCasino plugin;
-    private final File dataFile;
+    private final File        dataFile;
     private FileConfiguration data;
 
-    private final Map<String, MachineData>         machines      = new HashMap<>();
-    private final Set<String>                       busyMachines  = new HashSet<>();
-    private final Map<String, RouletteTableDisplay> tableDisplays = new HashMap<>();
+    private final Map<String, MachineData>          machines      = new HashMap<>();
+    private final Set<String>                        busyMachines  = new HashSet<>();
+    private final Map<String, RouletteTableDisplay>  tableDisplays = new HashMap<>();
+    private final Map<String, HorseWheelTableDisplay> wheelDisplays = new HashMap<>();
 
     public MachineManager(HimaCasino plugin) {
         this.plugin   = plugin;
@@ -59,6 +61,9 @@ public class MachineManager {
                 if (type == MachineType.ROULETTE) {
                     Location loc = keyToLocation(key);
                     if (loc != null) spawnTableDisplay(key, loc);
+                } else if (type == MachineType.HORSEWHEEL) {
+                    Location loc = keyToLocation(key);
+                    if (loc != null) spawnWheelDisplay(key, loc.clone().add(0, 2.0, 0));
                 }
             } catch (IllegalArgumentException ignored) {}
         }
@@ -74,7 +79,9 @@ public class MachineManager {
             data.set("machines." + key + ".betAmount", md.betAmount());
         }
         try { data.save(dataFile); }
-        catch (IOException e) { plugin.getLogger().warning("machines.yml を保存できませんでした: " + e.getMessage()); }
+        catch (IOException e) {
+            plugin.getLogger().warning("machines.yml を保存できませんでした: " + e.getMessage());
+        }
     }
 
     // ── Public API ─────────────────────────────────────────────────────────
@@ -85,6 +92,8 @@ public class MachineManager {
         save();
         if (type == MachineType.ROULETTE) {
             spawnTableDisplay(key, loc.clone().add(0.5, 0, 0.5));
+        } else if (type == MachineType.HORSEWHEEL) {
+            spawnWheelDisplay(key, loc.clone().add(0.5, 2.0, 0.5));
         }
     }
 
@@ -105,8 +114,12 @@ public class MachineManager {
         save();
         RouletteTableDisplay td = tableDisplays.remove(key);
         if (td != null) td.despawn();
+        HorseWheelTableDisplay wd = wheelDisplays.remove(key);
+        if (wd != null) wd.despawn();
         return true;
     }
+
+    // ── Type checks ────────────────────────────────────────────────────────
 
     public boolean isSlotMachine(Location loc) {
         MachineData md = machines.get(locKey(loc));
@@ -118,26 +131,33 @@ public class MachineManager {
         return md != null && md.type() == MachineType.ROULETTE;
     }
 
+    public boolean isHorseWheelTable(Location loc) {
+        MachineData md = machines.get(locKey(loc));
+        return md != null && md.type() == MachineType.HORSEWHEEL;
+    }
+
     public MachineData getMachineData(Location loc) { return machines.get(locKey(loc)); }
 
-    /** Returns the permanent roulette table display for a registered location, or null. */
+    // ── Display accessors ──────────────────────────────────────────────────
+
     public RouletteTableDisplay getTableDisplay(Location loc) {
-        // Try both the block-floor key and a key with the 0.5 offset stripped
         RouletteTableDisplay td = tableDisplays.get(locKey(loc));
         if (td != null) return td;
-        // loc may already be centered; try block-floor variant
         Location floor = new Location(loc.getWorld(),
                 Math.floor(loc.getX()), loc.getBlockY(), Math.floor(loc.getZ()));
         return tableDisplays.get(locKey(floor));
     }
 
-    // ── Busy tracking ──────────────────────────────────────────────────────
+    public HorseWheelTableDisplay getWheelDisplay(Location loc) {
+        HorseWheelTableDisplay wd = wheelDisplays.get(locKey(loc));
+        if (wd != null) return wd;
+        Location floor = new Location(loc.getWorld(),
+                Math.floor(loc.getX()), loc.getBlockY(), Math.floor(loc.getZ()));
+        return wheelDisplays.get(locKey(floor));
+    }
 
-    public boolean isBusy(Location loc)  { return busyMachines.contains(locKey(loc)); }
-    public void occupy(Location loc)     { busyMachines.add(locKey(loc)); }
-    public void release(Location loc)    { busyMachines.remove(locKey(loc)); }
+    // ── Nearest display helpers ────────────────────────────────────────────
 
-    /** Returns the nearest roulette table within maxDist blocks, or null. */
     public RouletteTableDisplay getNearestRouletteDisplay(Location loc, double maxDist) {
         RouletteTableDisplay nearest = null;
         double bestDistSq = maxDist * maxDist;
@@ -150,10 +170,19 @@ public class MachineManager {
         return nearest;
     }
 
-    /** Despawns all permanent roulette table displays and cancels idle animations. */
+    // ── Busy tracking ──────────────────────────────────────────────────────
+
+    public boolean isBusy(Location loc)  { return busyMachines.contains(locKey(loc)); }
+    public void occupy(Location loc)     { busyMachines.add(locKey(loc)); }
+    public void release(Location loc)    { busyMachines.remove(locKey(loc)); }
+
+    // ── Cleanup ────────────────────────────────────────────────────────────
+
     public void cleanup() {
-        for (RouletteTableDisplay td : tableDisplays.values()) td.despawn();
+        tableDisplays.values().forEach(RouletteTableDisplay::despawn);
         tableDisplays.clear();
+        wheelDisplays.values().forEach(HorseWheelTableDisplay::despawn);
+        wheelDisplays.clear();
     }
 
     // ── Internal helpers ───────────────────────────────────────────────────
@@ -165,13 +194,19 @@ public class MachineManager {
         tableDisplays.put(key, new RouletteTableDisplay(plugin, center));
     }
 
+    private void spawnWheelDisplay(String key, Location center) {
+        HorseWheelTableDisplay old = wheelDisplays.remove(key);
+        if (old != null) old.despawn();
+        if (center.getWorld() == null) return;
+        wheelDisplays.put(key, new HorseWheelTableDisplay(plugin, center));
+    }
+
     private static String locKey(Location loc) {
         World world = loc.getWorld();
         String w = (world != null) ? world.getName() : "null";
         return w + "," + loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
     }
 
-    /** Reconstructs a Location from a locKey string (block-centered). */
     private static Location keyToLocation(String key) {
         String[] parts = key.split(",");
         if (parts.length != 4) return null;
