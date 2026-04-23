@@ -18,7 +18,7 @@ public class CasinoTabCompleter implements TabCompleter {
         if (!(sender instanceof Player player)) return Collections.emptyList();
 
         if (args.length == 1) {
-            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow"));
+            List<String> sub = new ArrayList<>(Arrays.asList("roulette", "highlow", "blackjack", "help"));
             if (player.hasPermission("himacasino.admin")) {
                 sub.addAll(Arrays.asList("setting", "setmachine", "delmachine"));
             }
@@ -31,6 +31,8 @@ public class CasinoTabCompleter implements TabCompleter {
                         Arrays.asList("roulette", "horsewheel"), new ArrayList<>());
                 case "setting"    -> StringUtil.copyPartialMatches(args[1],
                         Arrays.asList("1","2","3","4","5","6"), new ArrayList<>());
+                case "help"       -> StringUtil.copyPartialMatches(args[1],
+                        Arrays.asList("slots","roulette","highlow","horsewheel","blackjack"), new ArrayList<>());
                 default           -> Collections.emptyList();
             };
         }

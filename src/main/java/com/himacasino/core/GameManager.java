@@ -1,5 +1,6 @@
 package com.himacasino.core;
 
+import com.himacasino.games.blackjack.BlackjackGame;
 import com.himacasino.games.highlow.HighLowGame;
 import com.himacasino.games.horsewheel.HorseWheelGame;
 import com.himacasino.games.roulette.RouletteGame;
@@ -16,11 +17,13 @@ public class GameManager {
     private final Map<UUID, RouletteGame>   roulette   = new HashMap<>();
     private final Map<UUID, HighLowGame>    highlow    = new HashMap<>();
     private final Map<UUID, HorseWheelGame> horsewheel = new HashMap<>();
+    private final Map<UUID, BlackjackGame>  blackjack  = new HashMap<>();
 
     public boolean hasActiveGame(Player player) {
         UUID id = player.getUniqueId();
         return isActive(slots.get(id)) || isActive(roulette.get(id))
-                || isActive(highlow.get(id)) || isActive(horsewheel.get(id));
+                || isActive(highlow.get(id)) || isActive(horsewheel.get(id))
+                || isActive(blackjack.get(id));
     }
 
     private boolean isActive(GameBase g) {
@@ -79,6 +82,20 @@ public class GameManager {
         horsewheel.remove(player.getUniqueId());
     }
 
+    // ── Blackjack ──────────────────────────────────────────────────────────
+
+    public BlackjackGame getBlackjackGame(Player player) {
+        return blackjack.get(player.getUniqueId());
+    }
+
+    public void registerBlackjackGame(Player player, BlackjackGame game) {
+        blackjack.put(player.getUniqueId(), game);
+    }
+
+    public void removeBlackjackGame(Player player) {
+        blackjack.remove(player.getUniqueId());
+    }
+
     // ── Cleanup ────────────────────────────────────────────────────────────
 
     public void cleanupAll() {
@@ -86,9 +103,11 @@ public class GameManager {
         roulette.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         highlow.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         horsewheel.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
+        blackjack.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         slots.clear();
         roulette.clear();
         highlow.clear();
         horsewheel.clear();
+        blackjack.clear();
     }
 }
