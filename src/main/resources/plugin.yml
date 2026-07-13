@@ -1,0 +1,24 @@
+name: HimaCasino
+version: 1.0.0
+main: com.himacasino.HimaCasino
+api-version: '1.21'
+description: Purpur 1.21.1 向け Display Entity ベースのカジノプラグイン
+authors: [HimaCasino]
+
+softdepend:
+  - Vault
+
+commands:
+  casino:
+    description: HimaCasino のメインコマンド
+    usage: /casino <roulette|highlow|blackjack|help|setting|setmachine|delmachine>
+    aliases: [hc]
+    permission: himacasino.play
+
+permissions:
+  himacasino.play:
+    description: カジノゲームをプレイできる
+    default: true
+  himacasino.admin:
+    description: 管理者コマンドを使用できる (設定変更・マシン設置)
+    default: op
