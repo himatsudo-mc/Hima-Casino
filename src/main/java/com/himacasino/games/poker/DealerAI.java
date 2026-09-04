@@ -1,13 +1,17 @@
 package com.himacasino.games.poker;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 /**
- * Simple heads-up dealer opponent logic. Not a full equity/Monte-Carlo solver — just a hand
- * strength heuristic (preflop hole-card score, postflop {@link HandEvaluator} category) driving
- * call/fold/bet decisions, good enough for a casino minigame opponent.
+ * Simple dealer opponent logic for Five Card Draw. Not a full equity solver — just a hand
+ * strength heuristic ({@link HandEvaluator} category) driving draw/call/fold/bet decisions,
+ * good enough for a casino minigame opponent.
  */
 final class DealerAI {
 
@@ -15,32 +19,44 @@ final class DealerAI {
 
     private static final Random RNG = new Random();
 
-    /** Normalized hand strength in [0.0, 1.0], higher = stronger. */
-    static double strength(List<Card> hole, List<Card> board) {
-        if (board.isEmpty()) return preflopStrength(hole);
-        List<Card> all = new ArrayList<>(hole);
-        all.addAll(board);
-        HandEvaluator.HandRank rank = HandEvaluator.evaluate(all);
+    /** Normalized hand strength in [0.0, 1.0], higher = stronger. {@code hand} must be exactly 5 cards. */
+    static double strength(List<Card> hand) {
+        HandEvaluator.HandRank rank = HandEvaluator.evaluate(hand);
         double base = rank.category().ordinal() / 8.0;
         double kicker = rank.tiebreak().isEmpty() ? 0 : rank.tiebreak().get(0) / 14.0;
         return Math.min(1.0, base + kicker * 0.08);
     }
 
-    private static double preflopStrength(List<Card> hole) {
-        int r1 = hole.get(0).getEvalRank();
-        int r2 = hole.get(1).getEvalRank();
-        boolean pair = r1 == r2;
-        boolean suited = hole.get(0).getSuit() == hole.get(1).getSuit();
-        int hi = Math.max(r1, r2);
-        int lo = Math.min(r1, r2);
-        int gap = hi - lo;
+    /**
+     * Which of the dealer's 5 cards to discard and redraw. A made straight or better always
+     * stands pat; otherwise any card belonging to a pair/trips/quads is kept and the rest
+     * discarded, and a hand with no pair at all keeps only its Jack-or-better cards.
+     */
+    static Set<Integer> discardIndices(List<Card> hand) {
+        HandEvaluator.HandRank rank = HandEvaluator.evaluate(hand);
+        if (rank.category().ordinal() >= HandEvaluator.Category.STRAIGHT.ordinal()) {
+            return Set.of();
+        }
 
-        double score = (hi + lo) / 28.0;
-        if (pair) score += 0.30 + hi / 100.0;
-        if (suited) score += 0.08;
-        if (gap == 1) score += 0.05;
-        else if (gap == 2) score += 0.02;
-        return Math.min(1.0, score);
+        Map<Integer, List<Integer>> byRank = new HashMap<>();
+        for (int i = 0; i < hand.size(); i++) {
+            byRank.computeIfAbsent(hand.get(i).getEvalRank(), k -> new ArrayList<>()).add(i);
+        }
+        Set<Integer> keep = new HashSet<>();
+        for (List<Integer> idxs : byRank.values()) {
+            if (idxs.size() >= 2) keep.addAll(idxs);
+        }
+        if (keep.isEmpty()) {
+            for (int i = 0; i < hand.size(); i++) {
+                if (hand.get(i).getEvalRank() >= 11) keep.add(i); // Jack or better
+            }
+        }
+
+        Set<Integer> discard = new HashSet<>();
+        for (int i = 0; i < hand.size(); i++) {
+            if (!keep.contains(i)) discard.add(i);
+        }
+        return discard;
     }
 
     /** Facing a player bet of {@code betAmount} into a pot of {@code potBefore} — call or fold? */

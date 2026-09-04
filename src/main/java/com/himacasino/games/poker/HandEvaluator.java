@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
-/** Evaluates the best 5-card poker hand out of 5-7 cards (2 hole cards + up to 5 community cards). */
+/** Evaluates the best 5-card poker hand out of a list of 5-7 cards. */
 public final class HandEvaluator {
 
     public enum Category {

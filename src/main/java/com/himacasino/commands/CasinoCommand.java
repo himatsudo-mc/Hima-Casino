@@ -156,9 +156,10 @@ public class CasinoCommand implements CommandExecutor {
     private void sendHelpPoker(Player player) {
         player.sendMessage("§2§l══════ POKER (Sow) ══════");
         player.sendMessage("§7/casino poker §fで開始。インベントリ UI でプレイ。");
-        player.sendMessage("§7ヘッズアップ・テキサスホールデム。ハウス相手に手役を競う。");
+        player.sendMessage("§7ヘッズアップ・ファイブカードドロー。ハウス相手に手役を競う。");
+        player.sendMessage("§7アンティを設定 → 5枚配布 → 好きな枚数(0〜5枚)を選んで1回だけ交換 → ベッティング → ショーダウン。");
+        player.sendMessage("§e操作: §fカードをクリックで交換対象を選択 → Drawで確定");
         player.sendMessage("§e操作: §fBET(賭ける)  CHECK/CALL(様子見/コール)  FOLD(降りる)");
-        player.sendMessage("§7アンティを設定 → PRE-FLOP/FLOP/TURN/RIVER と進行し、最後にショーダウン。");
         player.sendMessage("§7先にベットできるのは常にプレイヤー。ディーラーはコール/フォールドのみ(リレイズなし)。");
         player.sendMessage("§2§l══════════════════════");
     }
