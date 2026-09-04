@@ -12,45 +12,48 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.*;
 
 /**
- * Blackjack — 27-slot inventory UI (3 rows).
+ * Blackjack — 54-slot inventory UI (6 rows), custom-model-data GUI per SOW spec.
  *
- * ── BET phase ───────────────────────────────────────────────────────────────
- *   Row 0: bg  bg  bg  bg  bg  bg  bg  bg  bg
- *   Row 1: bg  bg  bg  bg  [SET BET]  bg  bg  bg  bg
- *   Row 2: bg  bg  bg  bg  bg  bg  [DEAL]  bg  bg
+ * ── Layout (all phases share the same 54-slot frame) ──────────────────────────
+ *   Row 0 (0-8):    wood frame (decorative top border)
+ *   Row 1 (9-17):   [DEALER BADGE][   DEALER CARDS 10-16   ][ felt ]
+ *   Row 2 (18-26):  felt  felt  felt  felt [STATUS/RESULT] felt  felt  felt  felt
+ *   Row 3 (27-35):  [ felt ][   PLAYER CARDS 28-34   ][PLAYER BADGE]
+ *   Row 4 (36-44):  felt  felt  felt  felt [PLAYER INFO] felt  felt  felt  felt
+ *   Row 5 (45-53):  wood  wood [ACTION 47][ACTION 48][ACTION 49] wood  wood  wood
  *
- * ── PLAYING phase ───────────────────────────────────────────────────────────
- *   Row 0: [D0][D1][D2][D3][D4]  bg  bg  bg [DEALER INFO]
- *   Row 1:  bg  bg  bg  bg [PLAYER TOTAL]  bg  bg  bg  bg
- *   Row 2: [P0][P1][P2][P3][P4]  bg [HIT][STAND][DOUBLE]
- *
- * ── RESULT phase ────────────────────────────────────────────────────────────
- *   Row 0: [D0][D1][D2][D3][D4]  bg  bg  bg [DEALER TOTAL]
- *   Row 1:  bg  bg  bg  bg [RESULT]  bg  bg  bg  bg
- *   Row 2: [P0][P1][P2][P3][P4]  bg [AGAIN][CHG BET][EXIT]
+ * Action slots 47/48/49 are reused across phases (BET: Set Bet / — / Deal,
+ * PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet / Exit).
  */
 public class BlackjackGame extends GameBase {
 
     public static final String TITLE     = "§2§lBLACK JACK";
     public static final String BET_TITLE = "§2BJ Bet Setting";
 
-    // ── Shared slot constants ──────────────────────────────────────────────
-    private static final int S_DEALER_START = 0;   // dealer cards: 0-4
-    private static final int S_DEALER_INFO  = 8;
-    private static final int S_CENTER       = 13;  // player total / result
-    private static final int S_PLAYER_START = 18;  // player cards: 18-22
-    // BET phase
-    private static final int S_SET_BET = 13;
-    private static final int S_PLAY    = 24;
-    // PLAYING phase
-    private static final int S_HIT        = 24;
-    private static final int S_STAND      = 25;
-    private static final int S_DOUBLE_DOWN = 26;
-    // RESULT phase
-    private static final int S_PLAY_AGAIN = 24;
-    private static final int S_CHANGE_BET = 25;
-    private static final int S_EXIT       = 26;
-    // Bet-setting screen (BET_TITLE)
+    private static final int GUI_SIZE = 54;
+
+    // ── Layout slots ───────────────────────────────────────────────────────
+    private static final int[] DEALER_SLOTS = {10, 11, 12, 13, 14, 15, 16};
+    private static final int[] PLAYER_SLOTS = {28, 29, 30, 31, 32, 33, 34};
+    private static final int S_DEALER_BADGE = 9;
+    private static final int S_PLAYER_BADGE = 40;
+    private static final int S_STATUS       = 22;
+
+    private static final int S_ACTION_LEFT   = 47; // Hit / Set Bet / Play Again
+    private static final int S_ACTION_MIDDLE = 48; // Stand / — / Change Bet
+    private static final int S_ACTION_RIGHT  = 49; // Double Down / Deal / Exit
+
+    private static final int[] TOP_FRAME_SLOTS    = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    private static final int[] BOTTOM_FRAME_SLOTS = {45, 46, 50, 51, 52, 53};
+
+    // CustomModelData for background filler items (PAPER-based, see resource pack).
+    private static final int CMD_FELT = 90;
+    private static final int CMD_WOOD = 91;
+    private static final int CMD_ACTION_HIT    = 100;
+    private static final int CMD_ACTION_STAND  = 101;
+    private static final int CMD_ACTION_DOUBLE = 102;
+
+    // Bet-setting screen (BET_TITLE, separate 27-slot inventory)
     private static final int B_CURRENT    = 4;
     private static final int B_CHIP_START = 9;
     private static final int B_CLEAR      = 17;
@@ -66,10 +69,10 @@ public class BlackjackGame extends GameBase {
     private Result  lastResult    = Result.NONE;
     private double  currentBet    = 0;
     private boolean transitioning = false;
-    private boolean doubled       = false;
 
-    private final List<Integer> playerHand = new ArrayList<>();
-    private final List<Integer> dealerHand = new ArrayList<>();
+    private final Deck deck = new Deck();
+    private final List<Card> playerHand = new ArrayList<>();
+    private final List<Card> dealerHand = new ArrayList<>();
     private boolean dealerHidden = true;
 
     private Inventory mainInv;
@@ -102,7 +105,7 @@ public class BlackjackGame extends GameBase {
     // ── Inventory builders ─────────────────────────────────────────────────
 
     private void buildMain() {
-        mainInv = plugin.getServer().createInventory(null, 27, TITLE);
+        mainInv = plugin.getServer().createInventory(null, GUI_SIZE, TITLE);
         populateMain();
     }
 
@@ -113,8 +116,11 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populateMain() {
-        ItemStack bg = bg();
-        for (int i = 0; i < 27; i++) mainInv.setItem(i, bg);
+        // Flat, grid-less felt body + wood top/bottom frame (CustomModelData filler items).
+        for (int i = 0; i < GUI_SIZE; i++) mainInv.setItem(i, felt());
+        for (int slot : TOP_FRAME_SLOTS)    mainInv.setItem(slot, wood());
+        for (int slot : BOTTOM_FRAME_SLOTS) mainInv.setItem(slot, wood());
+
         switch (phase) {
             case BET     -> populateBet();
             case PLAYING -> populatePlaying();
@@ -128,12 +134,15 @@ public class BlackjackGame extends GameBase {
                 ? String.format("§eBet: §6§l%.0f %s", currentBet, sym())
                 : "§7Bet: §enot set";
 
-        mainInv.setItem(S_SET_BET, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Bet",
+        mainInv.setItem(S_STATUS, makeItem(Material.PAPER, "§2§lBLACK JACK",
+                List.of(betStr, "§7Set your bet, then Deal")));
+
+        mainInv.setItem(S_ACTION_LEFT, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Bet",
                 List.of(betStr, "§7Click to open Bet Setting screen")));
 
         boolean canPlay = currentBet >= min
                 && (!eco().isEnabled() || eco().getBalance(player) >= currentBet);
-        mainInv.setItem(S_PLAY, canPlay
+        mainInv.setItem(S_ACTION_RIGHT, canPlay
                 ? makeItem(Material.LIME_CONCRETE, "§a§l▶ DEAL!", List.of(betStr))
                 : makeItem(Material.RED_CONCRETE, "§c§l✗ DEAL",
                     List.of(currentBet < min
@@ -144,35 +153,35 @@ public class BlackjackGame extends GameBase {
     private void populatePlaying() {
         int pv = handValue(playerHand);
 
-        // Dealer row
-        for (int i = 0; i < dealerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_DEALER_START + i,
-                    (i == 0 && dealerHidden) ? makeHidden() : makeCard(dealerHand.get(i)));
+        for (int i = 0; i < dealerHand.size() && i < DEALER_SLOTS.length; i++) {
+            mainInv.setItem(DEALER_SLOTS[i],
+                    (i == 0 && dealerHidden) ? makeCardBack() : makeCard(dealerHand.get(i)));
         }
-        mainInv.setItem(S_DEALER_INFO, makeItem(Material.RED_CONCRETE,
+        mainInv.setItem(S_DEALER_BADGE, makeItem(Material.RED_CONCRETE,
                 "§cDealer: §7?",
-                List.of("§7One card is hidden", "§8Face-up: §e" + cardName(dealerHand.get(1))
+                List.of("§7One card is hidden", "§8Face-up: §e" + dealerHand.get(1).shortName()
                         + " §7(" + cardValue(dealerHand.get(1)) + ")")));
 
-        // Player row
-        for (int i = 0; i < playerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_PLAYER_START + i, makeCard(playerHand.get(i)));
+        for (int i = 0; i < playerHand.size() && i < PLAYER_SLOTS.length; i++) {
+            mainInv.setItem(PLAYER_SLOTS[i], makeCard(playerHand.get(i)));
         }
-        mainInv.setItem(S_CENTER, makeItem(Material.LIME_CONCRETE,
+        mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
                 "§aYou: §e§l" + pv,
                 List.of(String.format("§7Bet: §e%.0f %s", betAmount, sym()),
                         pv >= 18 ? "§7Be careful!" : "§7Your turn")));
 
-        // Actions
-        mainInv.setItem(S_HIT, makeItem(Material.LIME_CONCRETE, "§a§lHIT",
+        mainInv.setItem(S_STATUS, makeItem(Material.PAPER, "§f§lYour Turn",
+                List.of("§7Choose an action below")));
+
+        mainInv.setItem(S_ACTION_LEFT, makeActionButton(CMD_ACTION_HIT, "§a§lHIT",
                 List.of("§7Draw one more card")));
-        mainInv.setItem(S_STAND, makeItem(Material.YELLOW_CONCRETE, "§e§lSTAND",
+        mainInv.setItem(S_ACTION_MIDDLE, makeActionButton(CMD_ACTION_STAND, "§e§lSTAND",
                 List.of("§7End your turn, let dealer draw")));
 
         boolean canDouble = playerHand.size() == 2
                 && (!eco().isEnabled() || eco().getBalance(player) >= betAmount);
-        mainInv.setItem(S_DOUBLE_DOWN, canDouble
-                ? makeItem(Material.GOLD_INGOT, "§6§lDOUBLE DOWN",
+        mainInv.setItem(S_ACTION_RIGHT, canDouble
+                ? makeActionButton(CMD_ACTION_DOUBLE, "§6§lDOUBLE DOWN",
                     List.of(String.format("§7Bet: §e%.0f → §6§l%.0f", betAmount, betAmount * 2),
                             "§7Draw 1 card, then stand"))
                 : makeItem(Material.GRAY_STAINED_GLASS_PANE, "§8§lDOUBLE DOWN",
@@ -184,21 +193,20 @@ public class BlackjackGame extends GameBase {
         int pv = handValue(playerHand);
         int dv = handValue(dealerHand);
 
-        // Dealer row (all face-up)
-        for (int i = 0; i < dealerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_DEALER_START + i, makeCard(dealerHand.get(i)));
+        for (int i = 0; i < dealerHand.size() && i < DEALER_SLOTS.length; i++) {
+            mainInv.setItem(DEALER_SLOTS[i], makeCard(dealerHand.get(i)));
         }
-        mainInv.setItem(S_DEALER_INFO, makeItem(
+        mainInv.setItem(S_DEALER_BADGE, makeItem(
                 dv > 21 ? Material.BARRIER : Material.RED_CONCRETE,
                 "§cDealer: §e" + dv,
                 List.of(dv > 21 ? "§c§lBUST!" : "§7Final total")));
 
-        // Player row
-        for (int i = 0; i < playerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_PLAYER_START + i, makeCard(playerHand.get(i)));
+        for (int i = 0; i < playerHand.size() && i < PLAYER_SLOTS.length; i++) {
+            mainInv.setItem(PLAYER_SLOTS[i], makeCard(playerHand.get(i)));
         }
+        mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
+                "§aYou: §e§l" + pv, List.of("§7Final total")));
 
-        // Result banner
         Material rMat; String rName; List<String> rLore = new ArrayList<>();
         switch (lastResult) {
             case BLACKJACK -> {
@@ -219,14 +227,13 @@ public class BlackjackGame extends GameBase {
             }
         }
         rLore.add(String.format("§8You %d  §8Dealer %d", pv, dv));
-        mainInv.setItem(S_CENTER, makeItem(rMat, rName, rLore));
+        mainInv.setItem(S_STATUS, makeItem(rMat, rName, rLore));
 
-        // Action buttons
-        mainInv.setItem(S_PLAY_AGAIN, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
+        mainInv.setItem(S_ACTION_LEFT, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
                 List.of(String.format("§7Bet: §e%.0f %s", currentBet, sym()))));
-        mainInv.setItem(S_CHANGE_BET, makeItem(Material.GOLD_INGOT, "§e§l⚙ Change Bet",
+        mainInv.setItem(S_ACTION_MIDDLE, makeItem(Material.GOLD_INGOT, "§e§l⚙ Change Bet",
                 List.of("§7Set a new bet amount")));
-        mainInv.setItem(S_EXIT, makeItem(Material.RED_CONCRETE, "§c§l✗ Exit",
+        mainInv.setItem(S_ACTION_RIGHT, makeItem(Material.RED_CONCRETE, "§c§l✗ Exit",
                 List.of("§7Close the game")));
     }
 
@@ -277,13 +284,13 @@ public class BlackjackGame extends GameBase {
     }
 
     private void handleBetPhaseClick(int slot) {
-        if (slot == S_SET_BET) {
+        if (slot == S_ACTION_LEFT) {
             transitioning = true;
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 openBetSetting();
                 transitioning = false;
             });
-        } else if (slot == S_PLAY) {
+        } else if (slot == S_ACTION_RIGHT) {
             double min = plugin.getConfigLoader().getBlackjackMinBet();
             if (currentBet < min) {
                 player.sendMessage(String.format("§cMinimum bet is §e%.0f!", min));
@@ -299,9 +306,9 @@ public class BlackjackGame extends GameBase {
 
     private void handlePlayingPhaseClick(int slot) {
         switch (slot) {
-            case S_HIT         -> playerHit();
-            case S_STAND       -> playerStand();
-            case S_DOUBLE_DOWN -> {
+            case S_ACTION_LEFT   -> playerHit();
+            case S_ACTION_MIDDLE -> playerStand();
+            case S_ACTION_RIGHT  -> {
                 if (playerHand.size() == 2) playerDouble();
             }
         }
@@ -309,19 +316,19 @@ public class BlackjackGame extends GameBase {
 
     private void handleResultPhaseClick(int slot) {
         switch (slot) {
-            case S_PLAY_AGAIN -> {
+            case S_ACTION_LEFT -> {
                 transitioning = true;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     startRound();
                     transitioning = false;
                 });
             }
-            case S_CHANGE_BET -> {
+            case S_ACTION_MIDDLE -> {
                 phase = Phase.BET;
                 buildMain();
                 openScheduled(mainInv);
             }
-            case S_EXIT -> plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
+            case S_ACTION_RIGHT -> plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
         }
     }
 
@@ -356,13 +363,12 @@ public class BlackjackGame extends GameBase {
         playerHand.clear();
         dealerHand.clear();
         dealerHidden = true;
-        doubled      = false;
         lastResult   = Result.NONE;
 
-        playerHand.add(drawCard());
-        dealerHand.add(drawCard()); // face-down
-        playerHand.add(drawCard());
-        dealerHand.add(drawCard()); // face-up
+        playerHand.add(deck.draw());
+        dealerHand.add(deck.draw()); // face-down
+        playerHand.add(deck.draw());
+        dealerHand.add(deck.draw()); // face-up
 
         boolean playerBJ = isBlackjack(playerHand);
         boolean dealerBJ = isBlackjack(dealerHand);
@@ -383,14 +389,13 @@ public class BlackjackGame extends GameBase {
         buildMain();
         player.openInventory(mainInv); // safe: inside scheduled task
         player.sendMessage(String.format("§2§lBlackjack! §7Your hand: §e%d  §7Dealer shows: §e%s",
-                handValue(playerHand), cardName(dealerHand.get(1))));
+                handValue(playerHand), dealerHand.get(1).shortName()));
     }
 
     private void playerHit() {
-        playerHand.add(drawCard());
+        playerHand.add(deck.draw());
         int pv = handValue(playerHand);
         if (pv > 21) {
-            // Bust
             dealerHidden = false;
             lastResult = Result.LOSE;
             processPayout();
@@ -398,11 +403,9 @@ public class BlackjackGame extends GameBase {
             buildMain();
             openScheduled(mainInv);
         } else {
-            // Update cards in-place — no inventory reopen, no flicker
             refreshMain();
             if (pv == 21) {
-                // Auto-stand on 21
-                playerStand();
+                playerStand(); // auto-stand on 21
             }
         }
     }
@@ -415,12 +418,11 @@ public class BlackjackGame extends GameBase {
         if (!eco().isEnabled() || eco().getBalance(player) >= betAmount) {
             eco().withdraw(player, betAmount);
             betAmount *= 2;
-            doubled = true;
         } else {
             player.sendMessage("§cInsufficient balance to double down.");
             return;
         }
-        playerHand.add(drawCard());
+        playerHand.add(deck.draw());
         if (handValue(playerHand) > 21) {
             dealerHidden = false;
             lastResult = Result.LOSE;
@@ -436,7 +438,7 @@ public class BlackjackGame extends GameBase {
     private void runDealerTurn() {
         dealerHidden = false;
         while (handValue(dealerHand) < 17) {
-            dealerHand.add(drawCard());
+            dealerHand.add(deck.draw());
         }
         evaluateResult();
     }
@@ -515,50 +517,52 @@ public class BlackjackGame extends GameBase {
         });
     }
 
-    // ── Card logic ─────────────────────────────────────────────────────────
+    // ── Card / hand logic ───────────────────────────────────────────────────
 
-    private int drawCard() { return new Random().nextInt(13) + 1; } // 1=A, 11=J, 12=Q, 13=K
+    private int cardValue(Card card) { return card.rank().baseValue(); }
 
-    private int cardValue(int card) {
-        if (card == 1) return 11;
-        if (card >= 11) return 10;
-        return card;
-    }
-
-    private int handValue(List<Integer> hand) {
+    private int handValue(List<Card> hand) {
         int val = 0, aces = 0;
-        for (int c : hand) {
-            if (c == 1) { aces++; val += 11; } else if (c >= 11) val += 10; else val += c;
+        for (Card c : hand) {
+            if (c.rank() == Card.Rank.ACE) aces++;
+            val += cardValue(c);
         }
         while (val > 21 && aces > 0) { val -= 10; aces--; }
         return val;
     }
 
-    private boolean isBlackjack(List<Integer> hand) {
+    private boolean isBlackjack(List<Card> hand) {
         return hand.size() == 2 && handValue(hand) == 21;
-    }
-
-    private String cardName(int v) {
-        return switch (v) { case 1 -> "A"; case 11 -> "J"; case 12 -> "Q"; case 13 -> "K";
-                             default -> String.valueOf(v); };
     }
 
     // ── Item factories ─────────────────────────────────────────────────────
 
-    private ItemStack makeCard(int v) {
-        ItemStack item = new ItemStack(cardMaterial(v));
+    private ItemStack makeCard(Card card) {
+        ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta  = item.getItemMeta();
-        meta.setDisplayName("§f§l" + cardName(v));
-        meta.setLore(List.of("§7Value: §e" + cardValue(v)));
+        meta.setCustomModelData(card.customModelData());
+        meta.setDisplayName("§f§l" + card.shortName());
+        meta.setLore(List.of("§7" + card.suit().displayName(), "§7Value: §e" + cardValue(card)));
         item.setItemMeta(meta);
         return item;
     }
 
-    private ItemStack makeHidden() {
-        ItemStack item = new ItemStack(Material.BLUE_STAINED_GLASS_PANE);
+    private ItemStack makeCardBack() {
+        ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta  = item.getItemMeta();
+        meta.setCustomModelData(Card.BACK_CUSTOM_MODEL_DATA);
         meta.setDisplayName("§b§l?");
         meta.setLore(List.of("§7Face-down card"));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack makeActionButton(int customModelData, String name, List<String> lore) {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta  = item.getItemMeta();
+        meta.setCustomModelData(customModelData);
+        meta.setDisplayName(name);
+        meta.setLore(lore);
         item.setItemMeta(meta);
         return item;
     }
@@ -572,24 +576,32 @@ public class BlackjackGame extends GameBase {
         return item;
     }
 
+    /** Flat dark-green felt filler (no grid lines) — see resource-pack CMD 90. */
+    private ItemStack felt() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta  meta = item.getItemMeta();
+        meta.setCustomModelData(CMD_FELT);
+        meta.setDisplayName("§0");
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /** Wood-grain frame filler for the top/bottom border rows — see resource-pack CMD 91. */
+    private ItemStack wood() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta  meta = item.getItemMeta();
+        meta.setCustomModelData(CMD_WOOD);
+        meta.setDisplayName("§0");
+        item.setItemMeta(meta);
+        return item;
+    }
+
     private ItemStack bg() {
         ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
         ItemMeta  meta = item.getItemMeta();
         meta.setDisplayName("§0");
         item.setItemMeta(meta);
         return item;
-    }
-
-    private Material cardMaterial(int v) {
-        return switch (v) {
-            case 1  -> Material.DIAMOND;          case 2  -> Material.LAPIS_LAZULI;
-            case 3  -> Material.EMERALD;           case 4  -> Material.REDSTONE;
-            case 5  -> Material.GOLD_NUGGET;       case 6  -> Material.IRON_NUGGET;
-            case 7  -> Material.QUARTZ;            case 8  -> Material.PRISMARINE_CRYSTALS;
-            case 9  -> Material.AMETHYST_SHARD;    case 10 -> Material.COPPER_INGOT;
-            case 11 -> Material.IRON_INGOT;        case 12 -> Material.GOLD_INGOT;
-            case 13 -> Material.NETHERITE_SCRAP;   default -> Material.PAPER;
-        };
     }
 
     private String sym()     { return plugin.getConfigLoader().getCurrencySymbol(); }

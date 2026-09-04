@@ -153,7 +153,7 @@ public class RouletteGame extends GameBase {
     private void spawnBall() {
         ItemStack ballItem = new ItemStack(Material.SNOWBALL);
         ItemMeta  bm       = ballItem.getItemMeta();
-        bm.setCustomModelData(21);
+        bm.setCustomModelData(221);
         ballItem.setItemMeta(bm);
         ballDisplay = tableCenter.getWorld().spawn(
                 tableCenter.clone().add(BALL_RADIUS_MAX, 0.15, 0), ItemDisplay.class, d -> {
