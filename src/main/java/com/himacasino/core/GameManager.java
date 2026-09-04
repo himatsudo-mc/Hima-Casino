@@ -3,6 +3,7 @@ package com.himacasino.core;
 import com.himacasino.games.blackjack.BlackjackGame;
 import com.himacasino.games.highlow.HighLowGame;
 import com.himacasino.games.horsewheel.HorseWheelGame;
+import com.himacasino.games.poker.PokerGame;
 import com.himacasino.games.roulette.RouletteGame;
 import com.himacasino.games.slots.SlotsGame;
 import org.bukkit.entity.Player;
@@ -18,12 +19,13 @@ public class GameManager {
     private final Map<UUID, HighLowGame>    highlow    = new HashMap<>();
     private final Map<UUID, HorseWheelGame> horsewheel = new HashMap<>();
     private final Map<UUID, BlackjackGame>  blackjack  = new HashMap<>();
+    private final Map<UUID, PokerGame>      poker      = new HashMap<>();
 
     public boolean hasActiveGame(Player player) {
         UUID id = player.getUniqueId();
         return isActive(slots.get(id)) || isActive(roulette.get(id))
                 || isActive(highlow.get(id)) || isActive(horsewheel.get(id))
-                || isActive(blackjack.get(id));
+                || isActive(blackjack.get(id)) || isActive(poker.get(id));
     }
 
     private boolean isActive(GameBase g) {
@@ -96,6 +98,20 @@ public class GameManager {
         blackjack.remove(player.getUniqueId());
     }
 
+    // ── Poker ──────────────────────────────────────────────────────────────
+
+    public PokerGame getPokerGame(Player player) {
+        return poker.get(player.getUniqueId());
+    }
+
+    public void registerPokerGame(Player player, PokerGame game) {
+        poker.put(player.getUniqueId(), game);
+    }
+
+    public void removePokerGame(Player player) {
+        poker.remove(player.getUniqueId());
+    }
+
     // ── Cleanup ────────────────────────────────────────────────────────────
 
     public void cleanupAll() {
@@ -104,10 +120,12 @@ public class GameManager {
         highlow.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         horsewheel.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         blackjack.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
+        poker.values().forEach(g -> { if (!g.isFinished()) g.cleanup(); });
         slots.clear();
         roulette.clear();
         highlow.clear();
         horsewheel.clear();
         blackjack.clear();
+        poker.clear();
     }
 }
