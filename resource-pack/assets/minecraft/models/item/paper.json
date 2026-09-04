@@ -57,8 +57,6 @@
     { "predicate": { "custom_model_data": 51 }, "model": "himacasino:item/cards/card_clubs_Q" },
     { "predicate": { "custom_model_data": 52 }, "model": "himacasino:item/cards/card_clubs_K" },
     { "predicate": { "custom_model_data": 53 }, "model": "himacasino:item/cards/card_back" },
-    { "predicate": { "custom_model_data": 90 }, "model": "himacasino:item/gui/felt_bg" },
-    { "predicate": { "custom_model_data": 91 }, "model": "himacasino:item/gui/wood_frame" },
     { "predicate": { "custom_model_data": 100 }, "model": "himacasino:item/buttons/btn_hit" },
     { "predicate": { "custom_model_data": 101 }, "model": "himacasino:item/buttons/btn_stand" },
     { "predicate": { "custom_model_data": 102 }, "model": "himacasino:item/buttons/btn_double_down" },

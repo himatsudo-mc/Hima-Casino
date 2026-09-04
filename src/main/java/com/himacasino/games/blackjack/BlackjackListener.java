@@ -6,6 +6,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.inventory.InventoryHolder;
 
 public class BlackjackListener implements Listener {
 
@@ -18,9 +19,9 @@ public class BlackjackListener implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player player)) return;
-        String title = event.getView().getTitle();
-        boolean isMain = BlackjackGame.TITLE.equals(title);
-        boolean isBet  = BlackjackGame.BET_TITLE.equals(title);
+        InventoryHolder holder = event.getView().getTopInventory().getHolder();
+        boolean isMain = holder instanceof BlackjackGame.MainHolder;
+        boolean isBet  = holder instanceof BlackjackGame.BetHolder;
         if (!isMain && !isBet) return;
 
         event.setCancelled(true);
@@ -37,14 +38,16 @@ public class BlackjackListener implements Listener {
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
-        String title = event.getView().getTitle();
-        if (!BlackjackGame.TITLE.equals(title) && !BlackjackGame.BET_TITLE.equals(title)) return;
+        InventoryHolder holder = event.getView().getTopInventory().getHolder();
+        boolean isMain = holder instanceof BlackjackGame.MainHolder;
+        boolean isBet  = holder instanceof BlackjackGame.BetHolder;
+        if (!isMain && !isBet) return;
 
         BlackjackGame game = plugin.getGameManager().getBlackjackGame(player);
         if (game == null || game.isFinished()) return;
         if (game.isTransitioning()) return;
 
-        if (BlackjackGame.TITLE.equals(title)) {
+        if (isMain) {
             game.cleanup();
         } else {
             // Player ESC'd bet-setting screen — return to main

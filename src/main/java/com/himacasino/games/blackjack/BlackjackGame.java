@@ -3,32 +3,68 @@ package com.himacasino.games.blackjack;
 import com.himacasino.HimaCasino;
 import com.himacasino.core.EconomyManager;
 import com.himacasino.core.GameBase;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.*;
 
 /**
- * Blackjack — 54-slot inventory UI (6 rows), custom-model-data GUI per SOW spec.
+ * Blackjack — 54-slot inventory UI (6 rows). The felt/wood table background is a
+ * single rounded-corner image baked into the inventory title via a custom font
+ * glyph (see resource-pack {@code assets/himacasino/font/default.json} and
+ * {@code textures/font/blackjack_panel.png}); cards and action buttons are real
+ * PAPER items with CustomModelData sitting on top of it.
  *
  * ── Layout (all phases share the same 54-slot frame) ──────────────────────────
- *   Row 0 (0-8):    wood frame (decorative top border)
- *   Row 1 (9-17):   [DEALER BADGE][   DEALER CARDS 10-16   ][ felt ]
- *   Row 2 (18-26):  felt  felt  felt  felt [STATUS/RESULT] felt  felt  felt  felt
- *   Row 3 (27-35):  [ felt ][   PLAYER CARDS 28-34   ][PLAYER BADGE]
- *   Row 4 (36-44):  felt  felt  felt  felt [PLAYER INFO] felt  felt  felt  felt
- *   Row 5 (45-53):  wood  wood [ACTION 47][ACTION 48][ACTION 49] wood  wood  wood
+ *   Row 0 (0-8):    (panel background: wood title strip)
+ *   Row 1 (9-17):   [DEALER BADGE]  [   DEALER CARDS 10-16   ]
+ *   Row 2 (18-26):                  [STATUS/RESULT, slot 22]
+ *   Row 3 (27-35):  [   PLAYER CARDS 28-34   ]  [PLAYER BADGE]
+ *   Row 4 (36-44):                  [PLAYER INFO, slot 40]
+ *   Row 5 (45-53):  [ACTION 47][ACTION 48][ACTION 49]  (panel: wood trim)
  *
  * Action slots 47/48/49 are reused across phases (BET: Set Bet / — / Deal,
  * PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet / Exit).
+ *
+ * The GUI is identified via {@link MainHolder}/{@link BetHolder} rather than by
+ * comparing title strings, since the title is now a Component carrying custom
+ * font glyphs (not a stable, comparable legacy string).
  */
 public class BlackjackGame extends GameBase {
 
-    public static final String TITLE     = "§2§lBLACK JACK";
-    public static final String BET_TITLE = "§2BJ Bet Setting";
+    private static final String TITLE_LABEL     = "§2§lBLACK JACK";
+    private static final String BET_TITLE_LABEL = "§2BJ Bet Setting";
+
+    /** Marker holder identifying the main 54-slot table GUI (see {@link BlackjackListener}). */
+    public static final class MainHolder implements InventoryHolder {
+        private Inventory inventory;
+        @Override public Inventory getInventory() { return inventory; }
+    }
+
+    /** Marker holder identifying the 27-slot bet-setting GUI. */
+    public static final class BetHolder implements InventoryHolder {
+        private Inventory inventory;
+        @Override public Inventory getInventory() { return inventory; }
+    }
+
+    // ── Custom-font panel background (resource-pack: font/default.json) ────
+    // Codepoints must match resource-pack/assets/himacasino/font/default.json.
+    private static final Key PANEL_FONT = Key.key("himacasino", "default");
+    private static final String GLYPH_SPACE_LEFT8 = "\uF801"; // -8px: title margin (x=8) -> x=0
+    private static final String GLYPH_SPACE_BACK  = "\uF802"; // -(176-8)px: panel right edge -> x=8
+    private static final String GLYPH_PANEL       = "\uF803"; // 176x222 felt/wood table image
+
+    private static Component buildTitle(String legacyLabel) {
+        Component panel = Component.text(GLYPH_SPACE_LEFT8 + GLYPH_PANEL + GLYPH_SPACE_BACK).font(PANEL_FONT);
+        return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
+    }
 
     private static final int GUI_SIZE = 54;
 
@@ -43,17 +79,12 @@ public class BlackjackGame extends GameBase {
     private static final int S_ACTION_MIDDLE = 48; // Stand / — / Change Bet
     private static final int S_ACTION_RIGHT  = 49; // Double Down / Deal / Exit
 
-    private static final int[] TOP_FRAME_SLOTS    = {0, 1, 2, 3, 4, 5, 6, 7, 8};
-    private static final int[] BOTTOM_FRAME_SLOTS = {45, 46, 50, 51, 52, 53};
-
-    // CustomModelData for background filler items (PAPER-based, see resource pack).
-    private static final int CMD_FELT = 90;
-    private static final int CMD_WOOD = 91;
+    // CustomModelData for action button icons (PAPER-based, see resource pack).
     private static final int CMD_ACTION_HIT    = 100;
     private static final int CMD_ACTION_STAND  = 101;
     private static final int CMD_ACTION_DOUBLE = 102;
 
-    // Bet-setting screen (BET_TITLE, separate 27-slot inventory)
+    // Bet-setting screen (separate 27-slot inventory, identified by BetHolder)
     private static final int B_CURRENT    = 4;
     private static final int B_CHIP_START = 9;
     private static final int B_CLEAR      = 17;
@@ -105,7 +136,9 @@ public class BlackjackGame extends GameBase {
     // ── Inventory builders ─────────────────────────────────────────────────
 
     private void buildMain() {
-        mainInv = plugin.getServer().createInventory(null, GUI_SIZE, TITLE);
+        MainHolder holder = new MainHolder();
+        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, buildTitle(TITLE_LABEL));
+        holder.inventory = mainInv;
         populateMain();
     }
 
@@ -116,10 +149,9 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populateMain() {
-        // Flat, grid-less felt body + wood top/bottom frame (CustomModelData filler items).
-        for (int i = 0; i < GUI_SIZE; i++) mainInv.setItem(i, felt());
-        for (int slot : TOP_FRAME_SLOTS)    mainInv.setItem(slot, wood());
-        for (int slot : BOTTOM_FRAME_SLOTS) mainInv.setItem(slot, wood());
+        // Background (felt + wood frame) is the custom-font panel glyph baked into
+        // the title; clear all slots so only the panel shows through where unused.
+        for (int i = 0; i < GUI_SIZE; i++) mainInv.setItem(i, null);
 
         switch (phase) {
             case BET     -> populateBet();
@@ -240,7 +272,10 @@ public class BlackjackGame extends GameBase {
     // ── Bet-setting screen ─────────────────────────────────────────────────
 
     public void openBetSetting() {
-        betInv = plugin.getServer().createInventory(null, 27, BET_TITLE);
+        BetHolder holder = new BetHolder();
+        betInv = plugin.getServer().createInventory(holder, 27,
+                LegacyComponentSerializer.legacySection().deserialize(BET_TITLE_LABEL));
+        holder.inventory = betInv;
         refreshBetScreen();
         player.openInventory(betInv);
     }
@@ -502,8 +537,8 @@ public class BlackjackGame extends GameBase {
         if (state == GameState.FINISHED) return;
         state = GameState.FINISHED;
         stopTickTask();
-        String open = player.getOpenInventory().getTitle();
-        if (TITLE.equals(open) || BET_TITLE.equals(open)) player.closeInventory();
+        InventoryHolder open = player.getOpenInventory().getTopInventory().getHolder();
+        if (open instanceof MainHolder || open instanceof BetHolder) player.closeInventory();
         plugin.getGameManager().removeBlackjackGame(player);
     }
 
@@ -572,26 +607,6 @@ public class BlackjackGame extends GameBase {
         ItemMeta  meta = item.getItemMeta();
         meta.setDisplayName(name);
         if (lore != null) meta.setLore(lore);
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    /** Flat dark-green felt filler (no grid lines) — see resource-pack CMD 90. */
-    private ItemStack felt() {
-        ItemStack item = new ItemStack(Material.PAPER);
-        ItemMeta  meta = item.getItemMeta();
-        meta.setCustomModelData(CMD_FELT);
-        meta.setDisplayName("§0");
-        item.setItemMeta(meta);
-        return item;
-    }
-
-    /** Wood-grain frame filler for the top/bottom border rows — see resource-pack CMD 91. */
-    private ItemStack wood() {
-        ItemStack item = new ItemStack(Material.PAPER);
-        ItemMeta  meta = item.getItemMeta();
-        meta.setCustomModelData(CMD_WOOD);
-        meta.setDisplayName("§0");
         item.setItemMeta(meta);
         return item;
     }
