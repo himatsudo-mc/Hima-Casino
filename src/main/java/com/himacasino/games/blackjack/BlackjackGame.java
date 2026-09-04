@@ -16,10 +16,10 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.*;
 
 /**
- * Blackjack — 27-slot inventory UI (3 rows: dealer, player, actions), sized to
- * hug its content and match the reference table design. The felt/wood table
- * background is a single rounded-corner image baked into the inventory title
- * via a custom font glyph (see resource-pack
+ * Blackjack — 36-slot inventory UI (4 rows: dealer, gap, player, actions),
+ * sized to hug its content and match the reference table design. The
+ * felt/wood table background is a single rounded-corner image baked into the
+ * inventory title via a custom font glyph (see resource-pack
  * {@code assets/himacasino/font/default.json} and
  * {@code textures/font/blackjack_panel.png}); cards and action buttons are
  * real PAPER items with CustomModelData sitting on top of it. Dealer/player
@@ -28,13 +28,14 @@ import java.util.*;
  *
  * ── Layout ──────────────────────────────────────────────────────────────────
  *   Row 0 (0-8):    [   DEALER CARDS, centered in 1-7   ]
- *   Row 1 (9-17):   [   PLAYER CARDS, centered in 10-16   ]
- *   Row 2 (18-26):    [ACTION 20]   [ACTION 22]   [ACTION 24]
+ *   Row 1 (9-17):   (empty — breathing room between dealer/player rows)
+ *   Row 2 (18-26):  [   PLAYER CARDS, centered in 19-25   ]
+ *   Row 3 (27-35):    [ACTION 29]   [ACTION 31]   [ACTION 33]
  *
  * Dealer/player hands are rendered centered within their 7-slot range (see
  * {@link #placeHandCentered}) rather than left-packed, so a 2-card hand sits
  * in the middle of the row and naturally fills outward as more cards are
- * drawn. Action slots 20/22/24 are reused across phases (BET: Set Bet / — /
+ * drawn. Action slots 29/31/33 are reused across phases (BET: Set Bet / — /
  * Deal, PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet /
  * Exit).
  *
@@ -75,15 +76,17 @@ public class BlackjackGame extends GameBase {
         return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
     }
 
-    private static final int GUI_SIZE = 27;
+    private static final int GUI_SIZE = 36;
 
     // ── Layout slots ───────────────────────────────────────────────────────
+    // Row 1 (9-17) is left empty on purpose as breathing room between the
+    // dealer and player rows, matching the reference layout's vertical rhythm.
     private static final int[] DEALER_SLOTS = {1, 2, 3, 4, 5, 6, 7};
-    private static final int[] PLAYER_SLOTS = {10, 11, 12, 13, 14, 15, 16};
+    private static final int[] PLAYER_SLOTS = {19, 20, 21, 22, 23, 24, 25};
 
-    private static final int S_ACTION_LEFT   = 20; // Hit / Set Bet / Play Again
-    private static final int S_ACTION_MIDDLE = 22; // Stand / — / Change Bet
-    private static final int S_ACTION_RIGHT  = 24; // Double Down / Deal / Exit
+    private static final int S_ACTION_LEFT   = 29; // Hit / Set Bet / Play Again
+    private static final int S_ACTION_MIDDLE = 31; // Stand / — / Change Bet
+    private static final int S_ACTION_RIGHT  = 33; // Double Down / Deal / Exit
 
     // CustomModelData for action button icons (PAPER-based, see resource pack).
     private static final int CMD_ACTION_HIT    = 100;
