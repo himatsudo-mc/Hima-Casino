@@ -65,6 +65,11 @@ public class ConfigLoader {
     public double getBlackjackMinBet() { return cfg().getDouble("blackjack.min-bet", 10.0); }
     public double getBlackjackMaxBet() { return cfg().getDouble("blackjack.max-bet", 10000.0); }
 
+    // ── Poker ──────────────────────────────────────────────────────────────
+
+    public double getPokerMinBet() { return cfg().getDouble("poker.min-bet", 10.0); }
+    public double getPokerMaxBet() { return cfg().getDouble("poker.max-bet", 10000.0); }
+
     // ── Resource Pack ──────────────────────────────────────────────────────
 
     public boolean isResourcePackEnabled() { return cfg().getBoolean("resource-pack.enabled", false); }

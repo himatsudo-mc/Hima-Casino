@@ -3,6 +3,7 @@ package com.himacasino.commands;
 import com.himacasino.HimaCasino;
 import com.himacasino.games.blackjack.BlackjackGame;
 import com.himacasino.games.highlow.HighLowGame;
+import com.himacasino.games.poker.PokerGame;
 import com.himacasino.manager.MachineManager;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -31,6 +32,7 @@ public class CasinoCommand implements CommandExecutor {
             case "roulette"   -> handleRoulette(player);
             case "highlow"    -> handleHighLow(player);
             case "blackjack"  -> handleBlackjack(player);
+            case "poker"      -> handlePoker(player);
             case "setting"    -> handleSetting(player, args);
             case "setmachine" -> handleSetMachine(player, args);
             case "delmachine" -> handleDelMachine(player, args);
@@ -74,6 +76,18 @@ public class CasinoCommand implements CommandExecutor {
         game.onStart();
     }
 
+    // ── /casino poker ──────────────────────────────────────────────────────
+
+    private void handlePoker(Player player) {
+        if (plugin.getGameManager().hasActiveGame(player)) {
+            player.sendMessage("§c現在進行中のゲームがあります。");
+            return;
+        }
+        PokerGame game = new PokerGame(plugin, player);
+        plugin.getGameManager().registerPokerGame(player, game);
+        game.onStart();
+    }
+
     // ── /casino help [game] ────────────────────────────────────────────────
 
     private void handleHelp(Player player, String[] args) {
@@ -84,6 +98,7 @@ public class CasinoCommand implements CommandExecutor {
                 case "highlow"   -> sendHelpHighLow(player);
                 case "horsewheel"-> sendHelpHorseWheel(player);
                 case "blackjack" -> sendHelpBlackjack(player);
+                case "poker"     -> sendHelpPoker(player);
                 default          -> sendHelp(player);
             }
         } else {
@@ -135,6 +150,17 @@ public class CasinoCommand implements CommandExecutor {
         player.sendMessage("§e操作: §fHIT(1枚引く)  STAND(終了)  DOUBLE(倍賭け+1枚)");
         player.sendMessage("§e配当: §fブラックジャック=3:2  通常勝利=1:1  タイ=返金  負け=没収");
         player.sendMessage("§7ディーラーは 17 以上になるまでドロー。");
+        player.sendMessage("§2§l══════════════════════");
+    }
+
+    private void sendHelpPoker(Player player) {
+        player.sendMessage("§2§l══════ POKER (Sow) ══════");
+        player.sendMessage("§7/casino poker §fで開始。インベントリ UI でプレイ。");
+        player.sendMessage("§7ヘッズアップ・ファイブカードドロー。ハウス相手に手役を競う。");
+        player.sendMessage("§7アンティを設定 → 5枚配布 → 好きな枚数(0〜5枚)を選んで1回だけ交換 → ベッティング → ショーダウン。");
+        player.sendMessage("§e操作: §fカードをクリックで交換対象を選択 → Drawで確定");
+        player.sendMessage("§e操作: §fBET(賭ける)  CHECK/CALL(様子見/コール)  FOLD(降りる)");
+        player.sendMessage("§7先にベットできるのは常にプレイヤー。ディーラーはコール/フォールドのみ(リレイズなし)。");
         player.sendMessage("§2§l══════════════════════");
     }
 
@@ -221,8 +247,9 @@ public class CasinoCommand implements CommandExecutor {
         player.sendMessage("§e/casino roulette§7 – ルーレットUIを開く");
         player.sendMessage("§e/casino highlow§7 – HIGH & LOW を遊ぶ");
         player.sendMessage("§e/casino blackjack§7 – BLACKJACK を遊ぶ");
+        player.sendMessage("§e/casino poker§7 – POKER (Sow) を遊ぶ");
         player.sendMessage("§7HORSE WHEEL: 設置されたホイールを右クリック");
-        player.sendMessage("§e/casino help §f<slots|roulette|highlow|horsewheel|blackjack>");
+        player.sendMessage("§e/casino help §f<slots|roulette|highlow|horsewheel|blackjack|poker>");
         if (player.hasPermission("himacasino.admin")) {
             player.sendMessage("§c§l[管理者]");
             player.sendMessage("§c/casino setting §f<1-6>§7 – スロット設定変更");

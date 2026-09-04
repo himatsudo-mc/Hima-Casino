@@ -11,7 +11,7 @@ softdepend:
 commands:
   casino:
     description: HimaCasino のメインコマンド
-    usage: /casino <roulette|highlow|blackjack|help|setting|setmachine|delmachine>
+    usage: /casino <roulette|highlow|blackjack|poker|help|setting|setmachine|delmachine>
     aliases: [hc]
     permission: himacasino.play
 
