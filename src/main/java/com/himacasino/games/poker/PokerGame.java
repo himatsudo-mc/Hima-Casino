@@ -3,6 +3,9 @@ package com.himacasino.games.poker;
 import com.himacasino.HimaCasino;
 import com.himacasino.core.EconomyManager;
 import com.himacasino.core.GameBase;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
@@ -16,32 +19,44 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Poker (Sow) — heads-up Texas Hold'em against the house, played on a 54-slot inventory UI
- * that mirrors Blackjack's layout conventions (border glass, centered card rows, a 3-button
- * action row, a separate chip-based bet-setting sub-screen).
+ * Poker (Sow) — heads-up Texas Hold'em against the house, on the same 54-slot table look as
+ * Blackjack: the felt/wood panel background is the identical custom-font glyph technique
+ * Blackjack uses (see resource-pack {@code assets/himacasino/font/default.json} +
+ * {@code textures/font/blackjack_panel.png}) — reused as-is, no new artwork. Real slot items
+ * (cards, action buttons) sit on top of it; every other slot is left {@code null} so the panel
+ * shows through, exactly like Blackjack.
  *
  * ── Layout ──────────────────────────────────────────────────────────────────
- *   Row 0 (0-8):    border glass, pot/ante status at slot 4
- *   Row 1 (9-17):   community cards, centered in 11-15
- *   Row 2 (18-26):  status message at slot 22; dealer's (face-down until showdown) hole
- *                   cards at 19-20 as flavor, border glass elsewhere
- *   Row 3 (27-35):  player's hole cards at 30-31
- *   Row 4 (36-44):  border glass (divider)
- *   Row 5 (45-53):  action buttons: BET=47 / CHECK·CALL=49 / FOLD=51
+ *   Row 0 (0-8):    (empty — breathing room under the title strip)
+ *   Row 1 (9-17):   [9]=dealer indicator  [  COMMUNITY CARDS, centered in 10-16  ]  [17]=dealer indicator
+ *   Row 2 (18-26):  (empty — breathing room between community/hole rows)
+ *   Row 3 (27-35):  [   YOUR HOLE CARDS, centered in 28-34   ]
+ *   Row 4 (36-44):  (empty — breathing room between hole row/actions)
+ *   Row 5 (45-53):    [ACTION 47]   [ACTION 49]   [ACTION 51]
  *
- * ── Betting model ───────────────────────────────────────────────────────────
- * The player sets an ante (bet-setting sub-screen, same chip UI as Blackjack) which both
- * sides put into the pot to start a hand. On each street (pre-flop/flop/turn/river) the
- * player acts first: BET opens the same chip UI to size a wager (the dealer then calls or
- * folds — never re-raises, keeping the interaction bounded to one bet per street), or
- * CHECK, after which the dealer may check back (advancing the street) or bet (the player
- * must then CALL or FOLD — the BET button is unavailable while a dealer bet is outstanding,
- * i.e. no re-raising). Reaching showdown at the river compares both hands with
- * {@link HandEvaluator}. The dealer's decisions come from {@link DealerAI}, a hand-strength
- * heuristic rather than a full solver — sufficient for a casino minigame opponent.
+ * This is Blackjack's own gap-row pattern (occupied row / empty row / occupied row / empty row /
+ * action row) applied to poker's two card concepts instead of dealer+player: community cards
+ * take the "dealer row" slot range and player hole cards take the "player row" slot range,
+ * both centered and growing outward exactly like {@code BlackjackGame#placeHandCentered}. The
+ * community row's two true edge slots (9 and 17) — always empty regardless of how many
+ * community cards are out, since centering never reaches them — double as a dealer hand
+ * indicator: a face-down card back while a hand is live, flipped to the real cards at
+ * showdown. No dedicated "dealer row" is needed.
  *
- * Dealer bets are capped at the player's balance so the player can always afford to call —
- * this keeps the game free of all-in / side-pot bookkeeping, a deliberate scope limit.
+ * Because the title carries the live Pot/street/result text (Blackjack's same trick, for the
+ * same reason: Bukkit cannot rename an open inventory in place), every state change needs a new
+ * title and therefore a full {@link #buildMain()} + reopen.
+ *
+ * The betting model itself is unchanged from the plain-background version: the player sets an
+ * ante (bet-setting sub-screen, same chip UI as Blackjack — that screen already matched
+ * Blackjack's own plain {@code GRAY_STAINED_GLASS_PANE} bet-setting look and needed no change).
+ * On each street the player acts first: BET opens the same chip UI to size a wager (the dealer
+ * then calls or folds — never re-raises), or CHECK, after which the dealer may check back or
+ * bet (the player must then CALL or FOLD — no re-raising). Reaching showdown at the river
+ * compares both hands with {@link HandEvaluator}; {@link DealerAI} — a hand-strength heuristic,
+ * not a full solver — drives the dealer's decisions. Dealer bets are capped at the player's
+ * balance so the player can always afford to call, keeping the game free of all-in/side-pot
+ * bookkeeping (a deliberate scope limit).
  */
 public class PokerGame extends GameBase {
 
@@ -57,27 +72,34 @@ public class PokerGame extends GameBase {
         @Override public Inventory getInventory() { return inventory; }
     }
 
-    private static final String MAIN_TITLE      = "§2§lPoker (Sow)";
     private static final String BET_TITLE_ANTE  = "§2Ante Setting";
     private static final String BET_TITLE_RAISE = "§2Bet Setting";
+
+    // ── Custom-font panel background (resource-pack: font/default.json) ────
+    // Reused byte-for-byte from Blackjack — same shared font/texture, not a new asset.
+    private static final Key PANEL_FONT = Key.key("himacasino", "default");
+    private static final String GLYPH_SPACE_LEFT8 = "\uF801"; // -8px: title margin (x=8) -> x=0
+    private static final String GLYPH_SPACE_BACK  = "\uF802"; // -(176-8)px: panel right edge -> x=8
+    private static final String GLYPH_PANEL       = "\uF803"; // 176x142 felt/wood table image
+
+    private static Component buildTitle(String legacyLabel) {
+        Component panel = Component.text(GLYPH_SPACE_LEFT8 + GLYPH_PANEL + GLYPH_SPACE_BACK).font(PANEL_FONT);
+        return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
+    }
 
     private static final int GUI_SIZE = 54;
 
     // ── Layout slots ───────────────────────────────────────────────────────
-    private static final int   S_POT             = 4;
-    private static final int[] ROW0_BORDER       = {0, 1, 2, 3, 5, 6, 7, 8};
-    private static final int[] COMMUNITY_SLOTS   = {11, 12, 13, 14, 15};
-    private static final int[] ROW1_BORDER       = {9, 10, 16, 17};
-    private static final int   S_MESSAGE         = 22;
-    private static final int[] DEALER_HOLE_SLOTS = {19, 20};
-    private static final int[] ROW2_BORDER       = {18, 21, 23, 24, 25, 26};
-    private static final int[] HOLE_SLOTS        = {30, 31};
-    private static final int[] ROW3_BORDER       = {27, 28, 29, 32, 33, 34, 35};
-    private static final int[] ROW4_BORDER       = {36, 37, 38, 39, 40, 41, 42, 43, 44};
-    private static final int   S_ACTION_LEFT     = 47; // BET / Set Ante / Play Again
-    private static final int   S_ACTION_MIDDLE   = 49; // CHECK-CALL / — / Change Ante
-    private static final int   S_ACTION_RIGHT    = 51; // FOLD / Deal / Exit
-    private static final int[] ROW5_BORDER       = {45, 46, 48, 50, 52, 53};
+    // Rows 0 (0-8), 2 (18-26) and 4 (36-44) are left empty on purpose — same reasoning as
+    // Blackjack: cards render at display.gui.scale 1.3, which overflows a bare 18px slot, so
+    // every occupied row needs a buffer on both sides.
+    private static final int[] COMMUNITY_SLOTS         = {10, 11, 12, 13, 14, 15, 16};
+    private static final int[] DEALER_INDICATOR_SLOTS  = {9, 17}; // row-1 edges, never reached by centering
+    private static final int[] HOLE_SLOTS              = {28, 29, 30, 31, 32, 33, 34};
+
+    private static final int S_ACTION_LEFT   = 47; // BET / Set Ante / Play Again
+    private static final int S_ACTION_MIDDLE = 49; // CHECK-CALL / — / Change Ante
+    private static final int S_ACTION_RIGHT  = 51; // FOLD / Deal / Exit
 
     // Bet-setting screen (separate 27-slot inventory, identified by BetHolder)
     private static final int B_CURRENT    = 4;
@@ -132,7 +154,7 @@ public class PokerGame extends GameBase {
     /** Called by listener when player ESC's the bet-setting screen. */
     public void returnToMain() {
         if (state == GameState.FINISHED) return;
-        populateMain();
+        buildMain();
         openScheduled(mainInv);
     }
 
@@ -140,39 +162,59 @@ public class PokerGame extends GameBase {
 
     private void buildMain() {
         MainHolder holder = new MainHolder();
-        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, MAIN_TITLE);
+        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, buildTitle(buildStatusText()));
         holder.inventory = mainInv;
         populateMain();
     }
 
+    /** Live Pot/street/result text shown right under the panel's title strip. */
+    private String buildStatusText() {
+        return switch (phase) {
+            case ANTE -> currentBet > 0
+                    ? String.format("§2§lPoker §7| §fAnte: §e%.0f %s", currentBet, sym())
+                    : "§2§lPoker §7| §7Ante not set";
+            case PREFLOP, FLOP, TURN, RIVER -> {
+                String street = switch (phase) {
+                    case PREFLOP -> "PRE-FLOP";
+                    case FLOP    -> "FLOP";
+                    case TURN    -> "TURN";
+                    case RIVER   -> "RIVER";
+                    default      -> "";
+                };
+                yield awaitingPlayerCallDecision
+                        ? String.format("§2§lPoker §7| §7%s §7| §fPot: §e%.0f §7| §cCall %.0f?",
+                            street, pot, dealerBetAmount)
+                        : String.format("§2§lPoker §7| §7%s §7| §fPot: §e%.0f", street, pot);
+            }
+            case RESULT -> {
+                String result = switch (lastResult) {
+                    case WIN           -> "§aWIN!";
+                    case LOSE          -> "§cLOSE";
+                    case PUSH          -> "§7PUSH";
+                    case DEALER_FOLDED -> "§6DEALER FOLDED";
+                    case PLAYER_FOLDED -> "§cFOLDED";
+                    case NONE          -> "";
+                };
+                yield String.format("§2§lPoker §7| %s §7| §fPot: §e%.0f", result, pot);
+            }
+        };
+    }
+
     private void populateMain() {
+        // Background (felt + wood frame) is the custom-font panel glyph baked into the title;
+        // clear all slots so only the panel shows through where unused (same as Blackjack).
         for (int i = 0; i < GUI_SIZE; i++) mainInv.setItem(i, null);
+
         switch (phase) {
-            case ANTE                              -> populateAnte();
-            case PREFLOP, FLOP, TURN, RIVER         -> populateStreet();
-            case RESULT                             -> populateResult();
+            case ANTE                       -> populateAnte();
+            case PREFLOP, FLOP, TURN, RIVER -> populateStreet();
+            case RESULT                     -> populateResult();
         }
     }
 
     private void populateAnte() {
-        fillBorder(ROW0_BORDER);
-        mainInv.setItem(S_POT, potStatusItem());
-        fillBorder(ROW1_BORDER);
-        for (int s : COMMUNITY_SLOTS) mainInv.setItem(s, bg());
-        fillBorder(ROW2_BORDER);
-        mainInv.setItem(DEALER_HOLE_SLOTS[0], bg());
-        mainInv.setItem(DEALER_HOLE_SLOTS[1], bg());
-        mainInv.setItem(S_MESSAGE, makeItem(Material.PAPER, MAIN_TITLE,
-                List.of("§7アンティを設定して §aDEAL §7を押してください。")));
-        fillBorder(ROW3_BORDER);
-        mainInv.setItem(HOLE_SLOTS[0], bg());
-        mainInv.setItem(HOLE_SLOTS[1], bg());
-        fillBorder(ROW4_BORDER);
-        fillBorder(ROW5_BORDER);
-
         mainInv.setItem(S_ACTION_LEFT, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Ante",
                 List.of(anteStatusLore(), "§7Click to open Ante Setting screen")));
-        mainInv.setItem(S_ACTION_MIDDLE, bg());
 
         double min = minBet();
         boolean canDeal = currentBet >= min && (!eco().isEnabled() || eco().getBalance(player) >= currentBet);
@@ -185,17 +227,9 @@ public class PokerGame extends GameBase {
     }
 
     private void populateStreet() {
-        fillBorder(ROW0_BORDER);
-        mainInv.setItem(S_POT, potStatusItem());
-        fillBorder(ROW1_BORDER);
-        renderCommunity();
-        fillBorder(ROW2_BORDER);
-        renderDealerBacks();
-        mainInv.setItem(S_MESSAGE, makeItem(Material.PAPER, streetTitle(), streetLore()));
-        fillBorder(ROW3_BORDER);
-        renderHoleCards();
-        fillBorder(ROW4_BORDER);
-        fillBorder(ROW5_BORDER);
+        placeHandCentered(COMMUNITY_SLOTS, board);
+        renderDealerIndicator();
+        placeHandCentered(HOLE_SLOTS, playerHole);
 
         if (awaitingPlayerCallDecision) {
             mainInv.setItem(S_ACTION_LEFT, makeItem(Material.GRAY_STAINED_GLASS_PANE, "§8(Raise unavailable)",
@@ -217,22 +251,9 @@ public class PokerGame extends GameBase {
     }
 
     private void populateResult() {
-        fillBorder(ROW0_BORDER);
-        mainInv.setItem(S_POT, potStatusItem());
-        fillBorder(ROW1_BORDER);
-        renderCommunity();
-        fillBorder(ROW2_BORDER);
-        if (revealDealerHand) {
-            mainInv.setItem(DEALER_HOLE_SLOTS[0], dealerHole.get(0).toItemStack());
-            mainInv.setItem(DEALER_HOLE_SLOTS[1], dealerHole.get(1).toItemStack());
-        } else {
-            renderDealerBacks();
-        }
-        mainInv.setItem(S_MESSAGE, resultMessageItem());
-        fillBorder(ROW3_BORDER);
-        renderHoleCards();
-        fillBorder(ROW4_BORDER);
-        fillBorder(ROW5_BORDER);
+        placeHandCentered(COMMUNITY_SLOTS, board);
+        renderDealerIndicator();
+        placeHandCentered(HOLE_SLOTS, playerHole);
 
         mainInv.setItem(S_ACTION_LEFT, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
                 List.of(String.format("§7Ante: §e%.0f %s", betAmount, sym()))));
@@ -243,6 +264,8 @@ public class PokerGame extends GameBase {
     }
 
     // ── Bet-setting screen (shared by ante-setting and mid-round raises) ───
+    // Unchanged from Blackjack's own bet-setting look (plain GRAY_STAINED_GLASS_PANE) — that
+    // screen already matched, so it isn't touched by the felt-panel rework above.
 
     public void openAnteSetting() {
         betSettingMode = BetMode.ANTE;
@@ -299,9 +322,9 @@ public class PokerGame extends GameBase {
 
     public void handleMainClick(int slot) {
         switch (phase) {
-            case ANTE                              -> handleAntePhaseClick(slot);
-            case PREFLOP, FLOP, TURN, RIVER         -> handleStreetClick(slot);
-            case RESULT                             -> handleResultClick(slot);
+            case ANTE                       -> handleAntePhaseClick(slot);
+            case PREFLOP, FLOP, TURN, RIVER -> handleStreetClick(slot);
+            case RESULT                     -> handleResultClick(slot);
         }
     }
 
@@ -363,7 +386,8 @@ public class PokerGame extends GameBase {
             }
             case S_ACTION_MIDDLE -> {
                 phase = Phase.ANTE;
-                populateMain();
+                buildMain();
+                openScheduled(mainInv);
             }
             case S_ACTION_RIGHT -> plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
         }
@@ -382,21 +406,19 @@ public class PokerGame extends GameBase {
             double min = minBet();
             if (currentBet < min || currentBet > max) return;
 
+            transitioning = true;
             if (betSettingMode == BetMode.ANTE) {
-                transitioning = true;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    populateMain();
+                    buildMain();
                     player.openInventory(mainInv);
                     transitioning = false;
                 });
             } else {
                 double raiseAmount = currentBet;
-                transitioning = true;
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    playerBets(raiseAmount);
-                    player.openInventory(mainInv);
-                    transitioning = false;
-                });
+                // playerBets()'s own chain (advanceStreet/settleDealerFold) ends with
+                // buildMain()+openScheduled(mainInv), which reopens mainInv and clears
+                // `transitioning` itself — no separate reopen needed here.
+                plugin.getServer().getScheduler().runTask(plugin, () -> playerBets(raiseAmount));
             }
         }
     }
@@ -407,7 +429,7 @@ public class PokerGame extends GameBase {
         betAmount = currentBet; // ante
         if (!chargeBet()) {
             currentBet = 0;
-            populateMain();
+            buildMain();
             player.openInventory(mainInv); // safe: inside scheduled task
             return;
         }
@@ -428,7 +450,7 @@ public class PokerGame extends GameBase {
         dealerHole.add(deck.draw());
 
         phase = Phase.PREFLOP;
-        populateMain();
+        buildMain();
         player.openInventory(mainInv); // safe: inside scheduled task
         player.sendMessage(String.format("§2§lPoker! §7アンティ: §e%.0f §7ポット: §e%.0f %s",
                 betAmount, pot, sym()));
@@ -449,7 +471,8 @@ public class PokerGame extends GameBase {
             awaitingPlayerCallDecision = true;
             player.sendMessage(String.format("§eディーラーが §6%.0f %s §eをベットしました！コールまたはフォールドしてください。",
                     betAmt, sym()));
-            populateMain();
+            buildMain();
+            openScheduled(mainInv);
         }
     }
 
@@ -500,7 +523,8 @@ public class PokerGame extends GameBase {
         }
         awaitingPlayerCallDecision = false;
         dealerBetAmount = 0;
-        populateMain();
+        buildMain();
+        openScheduled(mainInv);
     }
 
     private void settleShowdown() {
@@ -517,7 +541,10 @@ public class PokerGame extends GameBase {
         if (cmp > 0)      { lastResult = Result.WIN;  onWin(pot / betAmount); }
         else if (cmp < 0) { lastResult = Result.LOSE;  onLoss(); }
         else              { lastResult = Result.PUSH;  onPush(); }
-        populateMain();
+        player.sendMessage(String.format("§7You: §f%s §7| Dealer: §f%s",
+                playerFinalRank.displayName(), dealerFinalRank.displayName()));
+        buildMain();
+        openScheduled(mainInv);
     }
 
     private void settleDealerFold() {
@@ -525,7 +552,8 @@ public class PokerGame extends GameBase {
         lastResult = Result.DEALER_FOLDED;
         phase = Phase.RESULT;
         onWin(pot / betAmount);
-        populateMain();
+        buildMain();
+        openScheduled(mainInv);
     }
 
     private void settlePlayerFold() {
@@ -533,7 +561,8 @@ public class PokerGame extends GameBase {
         lastResult = Result.PLAYER_FOLDED;
         phase = Phase.RESULT;
         onLoss();
-        populateMain();
+        buildMain();
+        openScheduled(mainInv);
     }
 
     private void onPush() {
@@ -580,81 +609,43 @@ public class PokerGame extends GameBase {
         });
     }
 
-    // ── Rendering helpers ───────────────────────────────────────────────────
+    // ── Card / hand rendering ────────────────────────────────────────────────
 
-    private void renderCommunity() {
-        for (int i = 0; i < COMMUNITY_SLOTS.length; i++) {
-            mainInv.setItem(COMMUNITY_SLOTS[i], i < board.size() ? board.get(i).toItemStack() : bg());
+    /**
+     * Renders {@code hand} centered within {@code slots} instead of left-packed, so a 2-card
+     * hand sits in the middle of the row and naturally spreads to fill the row as more cards
+     * are drawn — identical technique to {@code BlackjackGame#placeHandCentered}. The rest of
+     * {@code slots} (and every slot outside it) was already cleared to {@code null} by
+     * {@link #populateMain()}, so nothing extra needs clearing here.
+     */
+    private void placeHandCentered(int[] slots, List<Card> hand) {
+        int count = Math.min(hand.size(), slots.length);
+        int start = (slots.length - count) / 2;
+        for (int i = 0; i < count; i++) {
+            mainInv.setItem(slots[start + i], hand.get(i).toItemStack());
         }
     }
 
-    private void renderHoleCards() {
-        if (playerHole.size() >= 2) {
-            mainInv.setItem(HOLE_SLOTS[0], playerHole.get(0).toItemStack());
-            mainInv.setItem(HOLE_SLOTS[1], playerHole.get(1).toItemStack());
+    /**
+     * The community row's two true edge slots (9/17) are never reached by
+     * {@link #placeHandCentered} (at most 5 community cards centered in a 7-slot range), so
+     * they double as a dealer-hand indicator: face-down while a hand is live, flipped to the
+     * real cards at showdown. Not called during the ante phase (no hand dealt yet).
+     */
+    private void renderDealerIndicator() {
+        if (revealDealerHand) {
+            mainInv.setItem(DEALER_INDICATOR_SLOTS[0], dealerHole.get(0).toItemStack());
+            mainInv.setItem(DEALER_INDICATOR_SLOTS[1], dealerHole.get(1).toItemStack());
         } else {
-            mainInv.setItem(HOLE_SLOTS[0], bg());
-            mainInv.setItem(HOLE_SLOTS[1], bg());
+            mainInv.setItem(DEALER_INDICATOR_SLOTS[0], makeCardBack());
+            mainInv.setItem(DEALER_INDICATOR_SLOTS[1], makeCardBack());
         }
-    }
-
-    private void renderDealerBacks() {
-        mainInv.setItem(DEALER_HOLE_SLOTS[0], makeCardBack());
-        mainInv.setItem(DEALER_HOLE_SLOTS[1], makeCardBack());
-    }
-
-    private String streetTitle() {
-        return switch (phase) {
-            case PREFLOP -> "§2§lPRE-FLOP";
-            case FLOP    -> "§2§lFLOP";
-            case TURN    -> "§2§lTURN";
-            case RIVER   -> "§2§lRIVER";
-            default      -> MAIN_TITLE;
-        };
-    }
-
-    private List<String> streetLore() {
-        return awaitingPlayerCallDecision
-                ? List.of("§eYour Turn §7— ディーラーのベットに応答してください")
-                : List.of("§eYour Turn §7— BET / CHECK / FOLD");
-    }
-
-    private ItemStack potStatusItem() {
-        if (phase == Phase.ANTE) {
-            return makeItem(Material.GOLD_BLOCK, "§ePot", List.of(anteStatusLore()));
-        }
-        return makeItem(Material.GOLD_BLOCK, String.format("§ePot: §6§l%.0f %s", pot, sym()),
-                List.of(String.format("§7Ante: §e%.0f %s", betAmount, sym())));
     }
 
     private String anteStatusLore() {
         return currentBet > 0
                 ? String.format("§eAnte: §6§l%.0f %s", currentBet, sym())
                 : "§7Ante: §enot set";
-    }
-
-    private ItemStack resultMessageItem() {
-        String title = switch (lastResult) {
-            case WIN            -> "§a§lWIN!";
-            case LOSE           -> "§c§lLOSE";
-            case PUSH           -> "§7§lPUSH";
-            case DEALER_FOLDED  -> "§6§lDEALER FOLDED";
-            case PLAYER_FOLDED  -> "§c§lYOU FOLDED";
-            case NONE           -> "§7Result";
-        };
-        List<String> lore = new ArrayList<>();
-        if (revealDealerHand) {
-            lore.add("§7You: §f" + playerFinalRank.displayName());
-            lore.add("§7Dealer: §f" + dealerFinalRank.displayName());
-        }
-        lore.add(String.format("§7Pot: §e%.0f %s", pot, sym()));
-
-        Material mat = switch (lastResult) {
-            case WIN, DEALER_FOLDED -> Material.GOLD_INGOT;
-            case PUSH               -> Material.PAPER;
-            default                 -> Material.BARRIER;
-        };
-        return makeItem(mat, title, lore);
     }
 
     // ── Item factories ─────────────────────────────────────────────────────
@@ -667,11 +658,6 @@ public class PokerGame extends GameBase {
         meta.setLore(List.of("§7Dealer's card (face-down)"));
         item.setItemMeta(meta);
         return item;
-    }
-
-    private void fillBorder(int[] slots) {
-        ItemStack bgItem = bg();
-        for (int s : slots) mainInv.setItem(s, bgItem);
     }
 
     private ItemStack makeItem(Material mat, String name, List<String> lore) {
