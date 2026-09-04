@@ -80,6 +80,8 @@ final class DealerAI {
 
     private static double clampedBet(double raw, double maxBet) {
         double rounded = Math.round(raw / 10.0) * 10.0;
-        return Math.max(10.0, Math.min(rounded, maxBet));
+        // maxBet caps what the player can still call, so it has to win over the 10-coin floor —
+        // otherwise a low-balance player gets bet at an amount they cannot match, and can only fold.
+        return Math.min(Math.max(10.0, rounded), maxBet);
     }
 }

@@ -128,6 +128,7 @@ public class PokerGame extends GameBase {
     private final Set<Integer> exchangeIndices = new LinkedHashSet<>(); // indices into playerHand marked for the draw
 
     private double  pot = 0;
+    private double  playerContribution = 0; // what the player actually staked this round (pot also holds the house's share)
     private boolean awaitingPlayerCallDecision = false;
     private double  dealerBetAmount = 0;
     private boolean revealDealerHand = false;
@@ -175,8 +176,10 @@ public class PokerGame extends GameBase {
             case ANTE -> currentBet > 0
                     ? String.format("§2§lPoker §7| §fAnte: §e%.0f %s", currentBet, sym())
                     : "§2§lPoker §7| §7Ante not set";
-            case DRAW -> String.format("§2§lPoker §7| §7DRAW §7| §f交換: §e%d§7/5 枚選択中",
-                    exchangeIndices.size());
+            // Deliberately independent of exchangeIndices: keeping the title constant across the
+            // draw lets a card toggle refresh items in place instead of rebuilding and reopening
+            // the whole inventory on every click. The live count is on the Draw button instead.
+            case DRAW -> "§2§lPoker §7| §7DRAW §7| §f交換するカードを選択";
             case BETTING -> awaitingPlayerCallDecision
                     ? String.format("§2§lPoker §7| §7BETTING §7| §fPot: §e%.0f §7| §cCall %.0f?", pot, dealerBetAmount)
                     : String.format("§2§lPoker §7| §7BETTING §7| §fPot: §e%.0f", pot);
@@ -323,6 +326,12 @@ public class PokerGame extends GameBase {
     // ── Click handlers ─────────────────────────────────────────────────────
 
     public void handleMainClick(int slot) {
+        // An action that defers work to the next tick leaves the old view open in the meantime,
+        // and the listener keeps forwarding clicks from it. Without this guard a second click in
+        // that window is handled against already-advanced state — double-charging an ante, or
+        // routing a Draw double-click into the betting phase's CHECK.
+        if (transitioning) return;
+
         switch (phase) {
             case ANTE    -> handleAntePhaseClick(slot);
             case DRAW    -> handleDrawPhaseClick(slot);
@@ -356,8 +365,7 @@ public class PokerGame extends GameBase {
         int handIndex = indexOfPlayerSlot(slot);
         if (handIndex >= 0) {
             if (!exchangeIndices.remove(handIndex)) exchangeIndices.add(handIndex);
-            buildMain();
-            openScheduled(mainInv);
+            populateMain(); // title is unchanged during the draw, so no rebuild/reopen needed
         } else if (slot == S_ACTION_MIDDLE) {
             confirmDraw();
         }
@@ -406,6 +414,9 @@ public class PokerGame extends GameBase {
                 });
             }
             case S_ACTION_MIDDLE -> {
+                // currentBet may still hold a mid-round raise amount; the ante screen must start
+                // from the ante that was actually played, not from that stale wager.
+                currentBet = betAmount;
                 phase = Phase.ANTE;
                 buildMain();
                 openScheduled(mainInv);
@@ -415,6 +426,10 @@ public class PokerGame extends GameBase {
     }
 
     public void handleBetClick(int slot) {
+        // Same guard as handleMainClick: Confirm defers the wager to the next tick, and the bet
+        // screen stays open until then — a second Confirm click would place the whole bet twice.
+        if (transitioning) return;
+
         double max = betScreenMax();
         if (slot >= B_CHIP_START && slot < B_CHIP_START + CHIP_VALUES.length) {
             double add = CHIP_VALUES[slot - B_CHIP_START];
@@ -459,6 +474,7 @@ public class PokerGame extends GameBase {
         dealerHand.clear();
         exchangeIndices.clear();
         pot = betAmount * 2; // player's ante + the house's matching ante
+        playerContribution = betAmount;
         lastResult = Result.NONE;
         revealDealerHand = false;
         awaitingPlayerCallDecision = false;
@@ -520,6 +536,7 @@ public class PokerGame extends GameBase {
             return;
         }
         eco().withdraw(player, amt);
+        playerContribution += amt;
         awaitingPlayerCallDecision = false;
         dealerBetAmount = 0;
         player.sendMessage(String.format("§7%.0f %s §7でコールしました。", amt, sym()));
@@ -528,7 +545,16 @@ public class PokerGame extends GameBase {
 
     /** Player opens with a bet; the dealer immediately calls (never re-raises) or folds. */
     private void playerBets(double amount) {
+        if (eco().isEnabled() && eco().getBalance(player) < amount) {
+            // The balance can drop between opening the bet screen and confirming; without this the
+            // withdrawal would silently fail while the pot still counted the money as staked.
+            player.sendMessage("§c残高が不足しているためベットできません。");
+            buildMain();
+            openScheduled(mainInv); // also clears `transitioning`, which the caller left set for us
+            return;
+        }
         eco().withdraw(player, amount);
+        playerContribution += amount;
         double potBefore = pot;
         pot += amount;
         player.sendMessage(String.format("§a%.0f %s §aをベットしました。", amount, sym()));
@@ -579,9 +605,11 @@ public class PokerGame extends GameBase {
     }
 
     private void onPush() {
-        double refund = pot / 2.0;
-        eco().deposit(player, refund);
-        player.sendMessage(String.format("§7§lPUSH! §7ポットの半分 §e%.0f %s §7が返還されました。", refund, sym()));
+        // Refund exactly what the player staked rather than pot/2 — equal in every current path,
+        // but it stays correct if the two sides' contributions ever stop being symmetric.
+        eco().deposit(player, playerContribution);
+        player.sendMessage(String.format("§7§lPUSH! §7賭け金 §e%.0f %s §7が返還されました。",
+                playerContribution, sym()));
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_CHIME, 1f, 1f);
     }
 
@@ -598,7 +626,8 @@ public class PokerGame extends GameBase {
     @Override
     public void onLoss() {
         state = GameState.RUNNING;
-        player.sendMessage(String.format("§c§lLose! §cポット §e%.0f %s §cを失いました。", pot, sym()));
+        // The pot also holds the house's matched share, so report the player's own stake.
+        player.sendMessage(String.format("§c§lLose! §e%.0f %s §cを失いました。", playerContribution, sym()));
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 1f, 0.5f);
     }
 
