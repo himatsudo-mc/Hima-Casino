@@ -16,25 +16,32 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.*;
 
 /**
- * Blackjack — 54-slot inventory UI (6 rows). The felt/wood table background is a
- * single rounded-corner image baked into the inventory title via a custom font
- * glyph (see resource-pack {@code assets/himacasino/font/default.json} and
- * {@code textures/font/blackjack_panel.png}); cards and action buttons are real
- * PAPER items with CustomModelData sitting on top of it.
+ * Blackjack — 27-slot inventory UI (3 rows: dealer, player, actions), sized to
+ * hug its content and match the reference table design. The felt/wood table
+ * background is a single rounded-corner image baked into the inventory title
+ * via a custom font glyph (see resource-pack
+ * {@code assets/himacasino/font/default.json} and
+ * {@code textures/font/blackjack_panel.png}); cards and action buttons are
+ * real PAPER items with CustomModelData sitting on top of it. Dealer/player
+ * totals and the bet/result are shown as plain colored text appended to the
+ * same title, positioned right under the panel's wood title strip.
  *
- * ── Layout (all phases share the same 54-slot frame) ──────────────────────────
- *   Row 0 (0-8):    (panel background: wood title strip)
- *   Row 1 (9-17):   [DEALER BADGE]  [   DEALER CARDS, centered in 10-16   ]
- *   Row 2 (18-26):                  [STATUS/RESULT, slot 22]
- *   Row 3 (27-35):  [   PLAYER CARDS, centered in 28-34   ]  [PLAYER BADGE]
- *   Row 4 (36-44):                  [PLAYER INFO, slot 40]
- *   Row 5 (45-53):    [ACTION 47]   [ACTION 49]   [ACTION 51]
+ * ── Layout ──────────────────────────────────────────────────────────────────
+ *   Row 0 (0-8):    [   DEALER CARDS, centered in 1-7   ]
+ *   Row 1 (9-17):   [   PLAYER CARDS, centered in 10-16   ]
+ *   Row 2 (18-26):    [ACTION 20]   [ACTION 22]   [ACTION 24]
  *
  * Dealer/player hands are rendered centered within their 7-slot range (see
- * {@link #placeHandCentered}) rather than left-packed, so a 2-card hand sits in
- * the middle of the row and naturally fills outward as more cards are drawn.
- * Action slots 47/49/51 are reused across phases (BET: Set Bet / — / Deal,
- * PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet / Exit).
+ * {@link #placeHandCentered}) rather than left-packed, so a 2-card hand sits
+ * in the middle of the row and naturally fills outward as more cards are
+ * drawn. Action slots 20/22/24 are reused across phases (BET: Set Bet / — /
+ * Deal, PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet /
+ * Exit).
+ *
+ * Because the title carries the live Dealer/You/Bet text, every state change
+ * needs a new title and therefore a full {@link #buildMain()} + reopen — Bukkit
+ * cannot rename an already-open inventory in place, so there is a brief reopen
+ * on every Hit (unlike a plain item-only refresh, this is unavoidable here).
  *
  * The GUI is identified via {@link MainHolder}/{@link BetHolder} rather than by
  * comparing title strings, since the title is now a Component carrying custom
@@ -42,10 +49,9 @@ import java.util.*;
  */
 public class BlackjackGame extends GameBase {
 
-    private static final String TITLE_LABEL     = "§2§lBLACK JACK";
     private static final String BET_TITLE_LABEL = "§2BJ Bet Setting";
 
-    /** Marker holder identifying the main 54-slot table GUI (see {@link BlackjackListener}). */
+    /** Marker holder identifying the main 27-slot table GUI (see {@link BlackjackListener}). */
     public static final class MainHolder implements InventoryHolder {
         private Inventory inventory;
         @Override public Inventory getInventory() { return inventory; }
@@ -69,18 +75,15 @@ public class BlackjackGame extends GameBase {
         return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
     }
 
-    private static final int GUI_SIZE = 54;
+    private static final int GUI_SIZE = 27;
 
     // ── Layout slots ───────────────────────────────────────────────────────
-    private static final int[] DEALER_SLOTS = {10, 11, 12, 13, 14, 15, 16};
-    private static final int[] PLAYER_SLOTS = {28, 29, 30, 31, 32, 33, 34};
-    private static final int S_DEALER_BADGE = 9;
-    private static final int S_PLAYER_BADGE = 40;
-    private static final int S_STATUS       = 22;
+    private static final int[] DEALER_SLOTS = {1, 2, 3, 4, 5, 6, 7};
+    private static final int[] PLAYER_SLOTS = {10, 11, 12, 13, 14, 15, 16};
 
-    private static final int S_ACTION_LEFT   = 47; // Hit / Set Bet / Play Again
-    private static final int S_ACTION_MIDDLE = 49; // Stand / — / Change Bet
-    private static final int S_ACTION_RIGHT  = 51; // Double Down / Deal / Exit
+    private static final int S_ACTION_LEFT   = 20; // Hit / Set Bet / Play Again
+    private static final int S_ACTION_MIDDLE = 22; // Stand / — / Change Bet
+    private static final int S_ACTION_RIGHT  = 24; // Double Down / Deal / Exit
 
     // CustomModelData for action button icons (PAPER-based, see resource pack).
     private static final int CMD_ACTION_HIT    = 100;
@@ -140,15 +143,31 @@ public class BlackjackGame extends GameBase {
 
     private void buildMain() {
         MainHolder holder = new MainHolder();
-        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, buildTitle(TITLE_LABEL));
+        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, buildTitle(buildStatusText()));
         holder.inventory = mainInv;
         populateMain();
     }
 
-    /** Updates items in the already-open mainInv without reopening (no flicker). */
-    private void refreshMain() {
-        if (mainInv == null) return;
-        populateMain();
+    /** Live Dealer/You/Bet text shown right under the panel's title strip. */
+    private String buildStatusText() {
+        return switch (phase) {
+            case BET -> String.format("§2§lBlackjack §7| §fBet: §e%.0f %s", currentBet, sym());
+            case PLAYING -> {
+                String dealerDisplay = dealerHidden ? "?" : String.valueOf(handValue(dealerHand));
+                yield String.format("§2§lBlackjack §7| §fDealer: §e%s §7You: §e%d §7Bet: §e%.0f",
+                        dealerDisplay, handValue(playerHand), betAmount);
+            }
+            case RESULT -> {
+                String resultWord = switch (lastResult) {
+                    case BLACKJACK -> "§6BLACKJACK!";
+                    case WIN       -> "§aWIN!";
+                    case PUSH      -> "§7PUSH";
+                    default        -> "§cLOSE";
+                };
+                yield String.format("§2§lBlackjack §7| §fDealer: §e%d §7You: §e%d §7%s",
+                        handValue(dealerHand), handValue(playerHand), resultWord);
+            }
+        };
     }
 
     private void populateMain() {
@@ -169,9 +188,6 @@ public class BlackjackGame extends GameBase {
                 ? String.format("§eBet: §6§l%.0f %s", currentBet, sym())
                 : "§7Bet: §enot set";
 
-        mainInv.setItem(S_STATUS, makeItem(Material.PAPER, "§2§lBLACK JACK",
-                List.of(betStr, "§7Set your bet, then Deal")));
-
         mainInv.setItem(S_ACTION_LEFT, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Bet",
                 List.of(betStr, "§7Click to open Bet Setting screen")));
 
@@ -186,22 +202,8 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populatePlaying() {
-        int pv = handValue(playerHand);
-
         placeHandCentered(DEALER_SLOTS, dealerHand, true);
-        mainInv.setItem(S_DEALER_BADGE, makeItem(Material.RED_CONCRETE,
-                "§cDealer: §7?",
-                List.of("§7One card is hidden", "§8Face-up: §e" + dealerHand.get(1).shortName()
-                        + " §7(" + cardValue(dealerHand.get(1)) + ")")));
-
         placeHandCentered(PLAYER_SLOTS, playerHand, false);
-        mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
-                "§aYou: §e§l" + pv,
-                List.of(String.format("§7Bet: §e%.0f %s", betAmount, sym()),
-                        pv >= 18 ? "§7Be careful!" : "§7Your turn")));
-
-        mainInv.setItem(S_STATUS, makeItem(Material.PAPER, "§f§lYour Turn",
-                List.of("§7Choose an action below")));
 
         mainInv.setItem(S_ACTION_LEFT, makeActionButton(CMD_ACTION_HIT, "§a§lHIT",
                 List.of("§7Draw one more card")));
@@ -220,40 +222,8 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populateResult() {
-        int pv = handValue(playerHand);
-        int dv = handValue(dealerHand);
-
         placeHandCentered(DEALER_SLOTS, dealerHand, true);
-        mainInv.setItem(S_DEALER_BADGE, makeItem(
-                dv > 21 ? Material.BARRIER : Material.RED_CONCRETE,
-                "§cDealer: §e" + dv,
-                List.of(dv > 21 ? "§c§lBUST!" : "§7Final total")));
-
         placeHandCentered(PLAYER_SLOTS, playerHand, false);
-        mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
-                "§aYou: §e§l" + pv, List.of("§7Final total")));
-
-        Material rMat; String rName; List<String> rLore = new ArrayList<>();
-        switch (lastResult) {
-            case BLACKJACK -> {
-                rMat  = Material.NETHER_STAR; rName = "§6§l★ BLACKJACK! ★";
-                rLore.add(String.format("§6+%.0f %s §7(3:2)", betAmount * 1.5, sym()));
-            }
-            case WIN -> {
-                rMat  = Material.GOLD_INGOT;  rName = "§a§l★ WIN!";
-                rLore.add(String.format("§a+%.0f %s", betAmount, sym()));
-            }
-            case PUSH -> {
-                rMat  = Material.PAPER;       rName = "§7§lPUSH — Tie";
-                rLore.add("§7Bet returned");
-            }
-            default -> {
-                rMat  = Material.BARRIER;     rName = "§c§l✗ LOSE";
-                rLore.add(String.format("§c-%.0f %s", betAmount, sym()));
-            }
-        }
-        rLore.add(String.format("§8You %d  §8Dealer %d", pv, dv));
-        mainInv.setItem(S_STATUS, makeItem(rMat, rName, rLore));
 
         mainInv.setItem(S_ACTION_LEFT, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
                 List.of(String.format("§7Bet: §e%.0f %s", currentBet, sym()))));
@@ -431,11 +401,14 @@ public class BlackjackGame extends GameBase {
             phase = Phase.RESULT;
             buildMain();
             openScheduled(mainInv);
+        } else if (pv == 21) {
+            playerStand(); // auto-stand on 21; this rebuilds+reopens itself
         } else {
-            refreshMain();
-            if (pv == 21) {
-                playerStand(); // auto-stand on 21
-            }
+            // The live "Dealer/You" totals live in the title, which Bukkit cannot
+            // rename in place, so a Hit needs a full rebuild + reopen (not just a
+            // same-inventory item refresh).
+            buildMain();
+            openScheduled(mainInv);
         }
     }
 
