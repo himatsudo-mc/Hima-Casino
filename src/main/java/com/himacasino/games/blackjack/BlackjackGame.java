@@ -24,13 +24,16 @@ import java.util.*;
  *
  * ── Layout (all phases share the same 54-slot frame) ──────────────────────────
  *   Row 0 (0-8):    (panel background: wood title strip)
- *   Row 1 (9-17):   [DEALER BADGE]  [   DEALER CARDS 10-16   ]
+ *   Row 1 (9-17):   [DEALER BADGE]  [   DEALER CARDS, centered in 10-16   ]
  *   Row 2 (18-26):                  [STATUS/RESULT, slot 22]
- *   Row 3 (27-35):  [   PLAYER CARDS 28-34   ]  [PLAYER BADGE]
+ *   Row 3 (27-35):  [   PLAYER CARDS, centered in 28-34   ]  [PLAYER BADGE]
  *   Row 4 (36-44):                  [PLAYER INFO, slot 40]
- *   Row 5 (45-53):  [ACTION 47][ACTION 48][ACTION 49]  (panel: wood trim)
+ *   Row 5 (45-53):    [ACTION 47]   [ACTION 49]   [ACTION 51]
  *
- * Action slots 47/48/49 are reused across phases (BET: Set Bet / — / Deal,
+ * Dealer/player hands are rendered centered within their 7-slot range (see
+ * {@link #placeHandCentered}) rather than left-packed, so a 2-card hand sits in
+ * the middle of the row and naturally fills outward as more cards are drawn.
+ * Action slots 47/49/51 are reused across phases (BET: Set Bet / — / Deal,
  * PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet / Exit).
  *
  * The GUI is identified via {@link MainHolder}/{@link BetHolder} rather than by
@@ -76,8 +79,8 @@ public class BlackjackGame extends GameBase {
     private static final int S_STATUS       = 22;
 
     private static final int S_ACTION_LEFT   = 47; // Hit / Set Bet / Play Again
-    private static final int S_ACTION_MIDDLE = 48; // Stand / — / Change Bet
-    private static final int S_ACTION_RIGHT  = 49; // Double Down / Deal / Exit
+    private static final int S_ACTION_MIDDLE = 49; // Stand / — / Change Bet
+    private static final int S_ACTION_RIGHT  = 51; // Double Down / Deal / Exit
 
     // CustomModelData for action button icons (PAPER-based, see resource pack).
     private static final int CMD_ACTION_HIT    = 100;
@@ -185,18 +188,13 @@ public class BlackjackGame extends GameBase {
     private void populatePlaying() {
         int pv = handValue(playerHand);
 
-        for (int i = 0; i < dealerHand.size() && i < DEALER_SLOTS.length; i++) {
-            mainInv.setItem(DEALER_SLOTS[i],
-                    (i == 0 && dealerHidden) ? makeCardBack() : makeCard(dealerHand.get(i)));
-        }
+        placeHandCentered(DEALER_SLOTS, dealerHand, true);
         mainInv.setItem(S_DEALER_BADGE, makeItem(Material.RED_CONCRETE,
                 "§cDealer: §7?",
                 List.of("§7One card is hidden", "§8Face-up: §e" + dealerHand.get(1).shortName()
                         + " §7(" + cardValue(dealerHand.get(1)) + ")")));
 
-        for (int i = 0; i < playerHand.size() && i < PLAYER_SLOTS.length; i++) {
-            mainInv.setItem(PLAYER_SLOTS[i], makeCard(playerHand.get(i)));
-        }
+        placeHandCentered(PLAYER_SLOTS, playerHand, false);
         mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
                 "§aYou: §e§l" + pv,
                 List.of(String.format("§7Bet: §e%.0f %s", betAmount, sym()),
@@ -225,17 +223,13 @@ public class BlackjackGame extends GameBase {
         int pv = handValue(playerHand);
         int dv = handValue(dealerHand);
 
-        for (int i = 0; i < dealerHand.size() && i < DEALER_SLOTS.length; i++) {
-            mainInv.setItem(DEALER_SLOTS[i], makeCard(dealerHand.get(i)));
-        }
+        placeHandCentered(DEALER_SLOTS, dealerHand, true);
         mainInv.setItem(S_DEALER_BADGE, makeItem(
                 dv > 21 ? Material.BARRIER : Material.RED_CONCRETE,
                 "§cDealer: §e" + dv,
                 List.of(dv > 21 ? "§c§lBUST!" : "§7Final total")));
 
-        for (int i = 0; i < playerHand.size() && i < PLAYER_SLOTS.length; i++) {
-            mainInv.setItem(PLAYER_SLOTS[i], makeCard(playerHand.get(i)));
-        }
+        placeHandCentered(PLAYER_SLOTS, playerHand, false);
         mainInv.setItem(S_PLAYER_BADGE, makeItem(Material.LIME_CONCRETE,
                 "§aYou: §e§l" + pv, List.of("§7Final total")));
 
@@ -568,6 +562,21 @@ public class BlackjackGame extends GameBase {
 
     private boolean isBlackjack(List<Card> hand) {
         return hand.size() == 2 && handValue(hand) == 21;
+    }
+
+    /**
+     * Renders {@code hand} centered within {@code slots} instead of left-packed, so a 2-card
+     * hand sits in the middle of the row (matching the reference layout) and naturally spreads
+     * to fill the row as more cards are drawn. When {@code dealer} is true, the first card is
+     * drawn face-down while {@link #dealerHidden} is set.
+     */
+    private void placeHandCentered(int[] slots, List<Card> hand, boolean dealer) {
+        int count = Math.min(hand.size(), slots.length);
+        int start = (slots.length - count) / 2;
+        for (int i = 0; i < count; i++) {
+            boolean faceDown = dealer && i == 0 && dealerHidden;
+            mainInv.setItem(slots[start + i], faceDown ? makeCardBack() : makeCard(hand.get(i)));
+        }
     }
 
     // ── Item factories ─────────────────────────────────────────────────────
