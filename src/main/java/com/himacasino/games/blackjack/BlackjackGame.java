@@ -3,54 +3,110 @@ package com.himacasino.games.blackjack;
 import com.himacasino.HimaCasino;
 import com.himacasino.core.EconomyManager;
 import com.himacasino.core.GameBase;
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.*;
 
 /**
- * Blackjack — 27-slot inventory UI (3 rows).
+ * Blackjack — 54-slot inventory UI (6 rows: gap, dealer, gap, player, gap,
+ * actions), sized to hug its content and match the reference table design.
+ * The felt/wood table background is a single rounded-corner image baked into
+ * the inventory title via a custom font glyph (see resource-pack
+ * {@code assets/himacasino/font/default.json} and
+ * {@code textures/font/blackjack_panel.png}); cards and action buttons are
+ * real PAPER items with CustomModelData sitting on top of it. Dealer/player
+ * totals and the bet/result are shown as plain colored text appended to the
+ * same title, positioned right under the panel's wood title strip.
  *
- * ── BET phase ───────────────────────────────────────────────────────────────
- *   Row 0: bg  bg  bg  bg  bg  bg  bg  bg  bg
- *   Row 1: bg  bg  bg  bg  [SET BET]  bg  bg  bg  bg
- *   Row 2: bg  bg  bg  bg  bg  bg  [DEAL]  bg  bg
+ * ── Layout ──────────────────────────────────────────────────────────────────
+ *   Row 0 (0-8):    (empty — breathing room between the title strip/dealer row)
+ *   Row 1 (9-17):   [   DEALER CARDS, centered in 10-16   ]
+ *   Row 2 (18-26):  (empty — breathing room between dealer/player rows)
+ *   Row 3 (27-35):  [   PLAYER CARDS, centered in 28-34   ]
+ *   Row 4 (36-44):  (empty — breathing room between player row/actions)
+ *   Row 5 (45-53):    [ACTION 47]   [ACTION 49]   [ACTION 51]
  *
- * ── PLAYING phase ───────────────────────────────────────────────────────────
- *   Row 0: [D0][D1][D2][D3][D4]  bg  bg  bg [DEALER INFO]
- *   Row 1:  bg  bg  bg  bg [PLAYER TOTAL]  bg  bg  bg  bg
- *   Row 2: [P0][P1][P2][P3][P4]  bg [HIT][STAND][DOUBLE]
+ * Dealer/player hands are rendered centered within their 7-slot range (see
+ * {@link #placeHandCentered}) rather than left-packed, so a 2-card hand sits
+ * in the middle of the row and naturally fills outward as more cards are
+ * drawn. Action slots 47/49/51 are reused across phases (BET: Set Bet / — /
+ * Deal, PLAYING: Hit / Stand / Double Down, RESULT: Play Again / Change Bet /
+ * Exit).
  *
- * ── RESULT phase ────────────────────────────────────────────────────────────
- *   Row 0: [D0][D1][D2][D3][D4]  bg  bg  bg [DEALER TOTAL]
- *   Row 1:  bg  bg  bg  bg [RESULT]  bg  bg  bg  bg
- *   Row 2: [P0][P1][P2][P3][P4]  bg [AGAIN][CHG BET][EXIT]
+ * The gap rows are not just cosmetic: cards/buttons render at
+ * {@code display.gui.scale} above 1.0 (1.3x / 1.2x), which is already enough
+ * to overflow a bare 18px slot's height — a row placed flush against the
+ * title strip, or against another occupied row, visibly overlaps its
+ * neighbor. Every occupied row therefore has an empty gap row on both sides
+ * (including above the dealer row, against the title strip) to safely absorb
+ * that overflow. Keep scale increases and gap rows in sync (see resource-pack
+ * card/button model JSON "display.gui.scale").
+ *
+ * Because the title carries the live Dealer/You/Bet text, every state change
+ * needs a new title and therefore a full {@link #buildMain()} + reopen — Bukkit
+ * cannot rename an already-open inventory in place, so there is a brief reopen
+ * on every Hit (unlike a plain item-only refresh, this is unavoidable here).
+ *
+ * The GUI is identified via {@link MainHolder}/{@link BetHolder} rather than by
+ * comparing title strings, since the title is now a Component carrying custom
+ * font glyphs (not a stable, comparable legacy string).
  */
 public class BlackjackGame extends GameBase {
 
-    public static final String TITLE     = "§2§lBLACK JACK";
-    public static final String BET_TITLE = "§2BJ Bet Setting";
+    private static final String BET_TITLE_LABEL = "§2BJ Bet Setting";
 
-    // ── Shared slot constants ──────────────────────────────────────────────
-    private static final int S_DEALER_START = 0;   // dealer cards: 0-4
-    private static final int S_DEALER_INFO  = 8;
-    private static final int S_CENTER       = 13;  // player total / result
-    private static final int S_PLAYER_START = 18;  // player cards: 18-22
-    // BET phase
-    private static final int S_SET_BET = 13;
-    private static final int S_PLAY    = 24;
-    // PLAYING phase
-    private static final int S_HIT        = 24;
-    private static final int S_STAND      = 25;
-    private static final int S_DOUBLE_DOWN = 26;
-    // RESULT phase
-    private static final int S_PLAY_AGAIN = 24;
-    private static final int S_CHANGE_BET = 25;
-    private static final int S_EXIT       = 26;
-    // Bet-setting screen (BET_TITLE)
+    /** Marker holder identifying the main 54-slot table GUI (see {@link BlackjackListener}). */
+    public static final class MainHolder implements InventoryHolder {
+        private Inventory inventory;
+        @Override public Inventory getInventory() { return inventory; }
+    }
+
+    /** Marker holder identifying the 27-slot bet-setting GUI. */
+    public static final class BetHolder implements InventoryHolder {
+        private Inventory inventory;
+        @Override public Inventory getInventory() { return inventory; }
+    }
+
+    // ── Custom-font panel background (resource-pack: font/default.json) ────
+    // Codepoints must match resource-pack/assets/himacasino/font/default.json.
+    private static final Key PANEL_FONT = Key.key("himacasino", "default");
+    private static final String GLYPH_SPACE_LEFT8 = "\uF801"; // -8px: title margin (x=8) -> x=0
+    private static final String GLYPH_SPACE_BACK  = "\uF802"; // -(176-8)px: panel right edge -> x=8
+    private static final String GLYPH_PANEL       = "\uF803"; // 176x222 felt/wood table image
+
+    private static Component buildTitle(String legacyLabel) {
+        Component panel = Component.text(GLYPH_SPACE_LEFT8 + GLYPH_PANEL + GLYPH_SPACE_BACK).font(PANEL_FONT);
+        return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
+    }
+
+    private static final int GUI_SIZE = 54;
+
+    // ── Layout slots ───────────────────────────────────────────────────────
+    // Rows 0 (0-8), 2 (18-26) and 4 (36-44) are left empty on purpose as
+    // breathing room (see class javadoc — the enlarged card/button icons
+    // overflow a bare 18px slot, so every occupied row needs a buffer on
+    // both sides, including above the dealer row against the title strip).
+    private static final int[] DEALER_SLOTS = {10, 11, 12, 13, 14, 15, 16};
+    private static final int[] PLAYER_SLOTS = {28, 29, 30, 31, 32, 33, 34};
+
+    private static final int S_ACTION_LEFT   = 47; // Hit / Set Bet / Play Again
+    private static final int S_ACTION_MIDDLE = 49; // Stand / — / Change Bet
+    private static final int S_ACTION_RIGHT  = 51; // Double Down / Deal / Exit
+
+    // CustomModelData for action button icons (PAPER-based, see resource pack).
+    private static final int CMD_ACTION_HIT    = 100;
+    private static final int CMD_ACTION_STAND  = 101;
+    private static final int CMD_ACTION_DOUBLE = 102;
+
+    // Bet-setting screen (separate 27-slot inventory, identified by BetHolder)
     private static final int B_CURRENT    = 4;
     private static final int B_CHIP_START = 9;
     private static final int B_CLEAR      = 17;
@@ -66,10 +122,10 @@ public class BlackjackGame extends GameBase {
     private Result  lastResult    = Result.NONE;
     private double  currentBet    = 0;
     private boolean transitioning = false;
-    private boolean doubled       = false;
 
-    private final List<Integer> playerHand = new ArrayList<>();
-    private final List<Integer> dealerHand = new ArrayList<>();
+    private final Deck deck = new Deck();
+    private final List<Card> playerHand = new ArrayList<>();
+    private final List<Card> dealerHand = new ArrayList<>();
     private boolean dealerHidden = true;
 
     private Inventory mainInv;
@@ -102,19 +158,39 @@ public class BlackjackGame extends GameBase {
     // ── Inventory builders ─────────────────────────────────────────────────
 
     private void buildMain() {
-        mainInv = plugin.getServer().createInventory(null, 27, TITLE);
+        MainHolder holder = new MainHolder();
+        mainInv = plugin.getServer().createInventory(holder, GUI_SIZE, buildTitle(buildStatusText()));
+        holder.inventory = mainInv;
         populateMain();
     }
 
-    /** Updates items in the already-open mainInv without reopening (no flicker). */
-    private void refreshMain() {
-        if (mainInv == null) return;
-        populateMain();
+    /** Live Dealer/You/Bet text shown right under the panel's title strip. */
+    private String buildStatusText() {
+        return switch (phase) {
+            case BET -> String.format("§2§lBlackjack §7| §fBet: §e%.0f %s", currentBet, sym());
+            case PLAYING -> {
+                String dealerDisplay = dealerHidden ? "?" : String.valueOf(handValue(dealerHand));
+                yield String.format("§2§lBlackjack §7| §fDealer: §e%s §7You: §e%d §7Bet: §e%.0f",
+                        dealerDisplay, handValue(playerHand), betAmount);
+            }
+            case RESULT -> {
+                String resultWord = switch (lastResult) {
+                    case BLACKJACK -> "§6BLACKJACK!";
+                    case WIN       -> "§aWIN!";
+                    case PUSH      -> "§7PUSH";
+                    default        -> "§cLOSE";
+                };
+                yield String.format("§2§lBlackjack §7| §fDealer: §e%d §7You: §e%d §7%s",
+                        handValue(dealerHand), handValue(playerHand), resultWord);
+            }
+        };
     }
 
     private void populateMain() {
-        ItemStack bg = bg();
-        for (int i = 0; i < 27; i++) mainInv.setItem(i, bg);
+        // Background (felt + wood frame) is the custom-font panel glyph baked into
+        // the title; clear all slots so only the panel shows through where unused.
+        for (int i = 0; i < GUI_SIZE; i++) mainInv.setItem(i, null);
+
         switch (phase) {
             case BET     -> populateBet();
             case PLAYING -> populatePlaying();
@@ -128,12 +204,12 @@ public class BlackjackGame extends GameBase {
                 ? String.format("§eBet: §6§l%.0f %s", currentBet, sym())
                 : "§7Bet: §enot set";
 
-        mainInv.setItem(S_SET_BET, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Bet",
+        mainInv.setItem(S_ACTION_LEFT, makeItem(Material.GOLD_INGOT, "§e§l⚙ Set Bet",
                 List.of(betStr, "§7Click to open Bet Setting screen")));
 
         boolean canPlay = currentBet >= min
                 && (!eco().isEnabled() || eco().getBalance(player) >= currentBet);
-        mainInv.setItem(S_PLAY, canPlay
+        mainInv.setItem(S_ACTION_RIGHT, canPlay
                 ? makeItem(Material.LIME_CONCRETE, "§a§l▶ DEAL!", List.of(betStr))
                 : makeItem(Material.RED_CONCRETE, "§c§l✗ DEAL",
                     List.of(currentBet < min
@@ -142,37 +218,18 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populatePlaying() {
-        int pv = handValue(playerHand);
+        placeHandCentered(DEALER_SLOTS, dealerHand, true);
+        placeHandCentered(PLAYER_SLOTS, playerHand, false);
 
-        // Dealer row
-        for (int i = 0; i < dealerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_DEALER_START + i,
-                    (i == 0 && dealerHidden) ? makeHidden() : makeCard(dealerHand.get(i)));
-        }
-        mainInv.setItem(S_DEALER_INFO, makeItem(Material.RED_CONCRETE,
-                "§cDealer: §7?",
-                List.of("§7One card is hidden", "§8Face-up: §e" + cardName(dealerHand.get(1))
-                        + " §7(" + cardValue(dealerHand.get(1)) + ")")));
-
-        // Player row
-        for (int i = 0; i < playerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_PLAYER_START + i, makeCard(playerHand.get(i)));
-        }
-        mainInv.setItem(S_CENTER, makeItem(Material.LIME_CONCRETE,
-                "§aYou: §e§l" + pv,
-                List.of(String.format("§7Bet: §e%.0f %s", betAmount, sym()),
-                        pv >= 18 ? "§7Be careful!" : "§7Your turn")));
-
-        // Actions
-        mainInv.setItem(S_HIT, makeItem(Material.LIME_CONCRETE, "§a§lHIT",
+        mainInv.setItem(S_ACTION_LEFT, makeActionButton(CMD_ACTION_HIT, "§a§lHIT",
                 List.of("§7Draw one more card")));
-        mainInv.setItem(S_STAND, makeItem(Material.YELLOW_CONCRETE, "§e§lSTAND",
+        mainInv.setItem(S_ACTION_MIDDLE, makeActionButton(CMD_ACTION_STAND, "§e§lSTAND",
                 List.of("§7End your turn, let dealer draw")));
 
         boolean canDouble = playerHand.size() == 2
                 && (!eco().isEnabled() || eco().getBalance(player) >= betAmount);
-        mainInv.setItem(S_DOUBLE_DOWN, canDouble
-                ? makeItem(Material.GOLD_INGOT, "§6§lDOUBLE DOWN",
+        mainInv.setItem(S_ACTION_RIGHT, canDouble
+                ? makeActionButton(CMD_ACTION_DOUBLE, "§6§lDOUBLE DOWN",
                     List.of(String.format("§7Bet: §e%.0f → §6§l%.0f", betAmount, betAmount * 2),
                             "§7Draw 1 card, then stand"))
                 : makeItem(Material.GRAY_STAINED_GLASS_PANE, "§8§lDOUBLE DOWN",
@@ -181,59 +238,24 @@ public class BlackjackGame extends GameBase {
     }
 
     private void populateResult() {
-        int pv = handValue(playerHand);
-        int dv = handValue(dealerHand);
+        placeHandCentered(DEALER_SLOTS, dealerHand, true);
+        placeHandCentered(PLAYER_SLOTS, playerHand, false);
 
-        // Dealer row (all face-up)
-        for (int i = 0; i < dealerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_DEALER_START + i, makeCard(dealerHand.get(i)));
-        }
-        mainInv.setItem(S_DEALER_INFO, makeItem(
-                dv > 21 ? Material.BARRIER : Material.RED_CONCRETE,
-                "§cDealer: §e" + dv,
-                List.of(dv > 21 ? "§c§lBUST!" : "§7Final total")));
-
-        // Player row
-        for (int i = 0; i < playerHand.size() && i < 5; i++) {
-            mainInv.setItem(S_PLAYER_START + i, makeCard(playerHand.get(i)));
-        }
-
-        // Result banner
-        Material rMat; String rName; List<String> rLore = new ArrayList<>();
-        switch (lastResult) {
-            case BLACKJACK -> {
-                rMat  = Material.NETHER_STAR; rName = "§6§l★ BLACKJACK! ★";
-                rLore.add(String.format("§6+%.0f %s §7(3:2)", betAmount * 1.5, sym()));
-            }
-            case WIN -> {
-                rMat  = Material.GOLD_INGOT;  rName = "§a§l★ WIN!";
-                rLore.add(String.format("§a+%.0f %s", betAmount, sym()));
-            }
-            case PUSH -> {
-                rMat  = Material.PAPER;       rName = "§7§lPUSH — Tie";
-                rLore.add("§7Bet returned");
-            }
-            default -> {
-                rMat  = Material.BARRIER;     rName = "§c§l✗ LOSE";
-                rLore.add(String.format("§c-%.0f %s", betAmount, sym()));
-            }
-        }
-        rLore.add(String.format("§8You %d  §8Dealer %d", pv, dv));
-        mainInv.setItem(S_CENTER, makeItem(rMat, rName, rLore));
-
-        // Action buttons
-        mainInv.setItem(S_PLAY_AGAIN, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
+        mainInv.setItem(S_ACTION_LEFT, makeItem(Material.LIME_CONCRETE, "§a§l▶ Play Again",
                 List.of(String.format("§7Bet: §e%.0f %s", currentBet, sym()))));
-        mainInv.setItem(S_CHANGE_BET, makeItem(Material.GOLD_INGOT, "§e§l⚙ Change Bet",
+        mainInv.setItem(S_ACTION_MIDDLE, makeItem(Material.GOLD_INGOT, "§e§l⚙ Change Bet",
                 List.of("§7Set a new bet amount")));
-        mainInv.setItem(S_EXIT, makeItem(Material.RED_CONCRETE, "§c§l✗ Exit",
+        mainInv.setItem(S_ACTION_RIGHT, makeItem(Material.RED_CONCRETE, "§c§l✗ Exit",
                 List.of("§7Close the game")));
     }
 
     // ── Bet-setting screen ─────────────────────────────────────────────────
 
     public void openBetSetting() {
-        betInv = plugin.getServer().createInventory(null, 27, BET_TITLE);
+        BetHolder holder = new BetHolder();
+        betInv = plugin.getServer().createInventory(holder, 27,
+                LegacyComponentSerializer.legacySection().deserialize(BET_TITLE_LABEL));
+        holder.inventory = betInv;
         refreshBetScreen();
         player.openInventory(betInv);
     }
@@ -277,13 +299,13 @@ public class BlackjackGame extends GameBase {
     }
 
     private void handleBetPhaseClick(int slot) {
-        if (slot == S_SET_BET) {
+        if (slot == S_ACTION_LEFT) {
             transitioning = true;
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 openBetSetting();
                 transitioning = false;
             });
-        } else if (slot == S_PLAY) {
+        } else if (slot == S_ACTION_RIGHT) {
             double min = plugin.getConfigLoader().getBlackjackMinBet();
             if (currentBet < min) {
                 player.sendMessage(String.format("§cMinimum bet is §e%.0f!", min));
@@ -299,9 +321,9 @@ public class BlackjackGame extends GameBase {
 
     private void handlePlayingPhaseClick(int slot) {
         switch (slot) {
-            case S_HIT         -> playerHit();
-            case S_STAND       -> playerStand();
-            case S_DOUBLE_DOWN -> {
+            case S_ACTION_LEFT   -> playerHit();
+            case S_ACTION_MIDDLE -> playerStand();
+            case S_ACTION_RIGHT  -> {
                 if (playerHand.size() == 2) playerDouble();
             }
         }
@@ -309,19 +331,19 @@ public class BlackjackGame extends GameBase {
 
     private void handleResultPhaseClick(int slot) {
         switch (slot) {
-            case S_PLAY_AGAIN -> {
+            case S_ACTION_LEFT -> {
                 transitioning = true;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     startRound();
                     transitioning = false;
                 });
             }
-            case S_CHANGE_BET -> {
+            case S_ACTION_MIDDLE -> {
                 phase = Phase.BET;
                 buildMain();
                 openScheduled(mainInv);
             }
-            case S_EXIT -> plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
+            case S_ACTION_RIGHT -> plugin.getServer().getScheduler().runTask(plugin, this::cleanup);
         }
     }
 
@@ -356,13 +378,12 @@ public class BlackjackGame extends GameBase {
         playerHand.clear();
         dealerHand.clear();
         dealerHidden = true;
-        doubled      = false;
         lastResult   = Result.NONE;
 
-        playerHand.add(drawCard());
-        dealerHand.add(drawCard()); // face-down
-        playerHand.add(drawCard());
-        dealerHand.add(drawCard()); // face-up
+        playerHand.add(deck.draw());
+        dealerHand.add(deck.draw()); // face-down
+        playerHand.add(deck.draw());
+        dealerHand.add(deck.draw()); // face-up
 
         boolean playerBJ = isBlackjack(playerHand);
         boolean dealerBJ = isBlackjack(dealerHand);
@@ -383,27 +404,27 @@ public class BlackjackGame extends GameBase {
         buildMain();
         player.openInventory(mainInv); // safe: inside scheduled task
         player.sendMessage(String.format("§2§lBlackjack! §7Your hand: §e%d  §7Dealer shows: §e%s",
-                handValue(playerHand), cardName(dealerHand.get(1))));
+                handValue(playerHand), dealerHand.get(1).shortName()));
     }
 
     private void playerHit() {
-        playerHand.add(drawCard());
+        playerHand.add(deck.draw());
         int pv = handValue(playerHand);
         if (pv > 21) {
-            // Bust
             dealerHidden = false;
             lastResult = Result.LOSE;
             processPayout();
             phase = Phase.RESULT;
             buildMain();
             openScheduled(mainInv);
+        } else if (pv == 21) {
+            playerStand(); // auto-stand on 21; this rebuilds+reopens itself
         } else {
-            // Update cards in-place — no inventory reopen, no flicker
-            refreshMain();
-            if (pv == 21) {
-                // Auto-stand on 21
-                playerStand();
-            }
+            // The live "Dealer/You" totals live in the title, which Bukkit cannot
+            // rename in place, so a Hit needs a full rebuild + reopen (not just a
+            // same-inventory item refresh).
+            buildMain();
+            openScheduled(mainInv);
         }
     }
 
@@ -415,12 +436,11 @@ public class BlackjackGame extends GameBase {
         if (!eco().isEnabled() || eco().getBalance(player) >= betAmount) {
             eco().withdraw(player, betAmount);
             betAmount *= 2;
-            doubled = true;
         } else {
             player.sendMessage("§cInsufficient balance to double down.");
             return;
         }
-        playerHand.add(drawCard());
+        playerHand.add(deck.draw());
         if (handValue(playerHand) > 21) {
             dealerHidden = false;
             lastResult = Result.LOSE;
@@ -436,7 +456,7 @@ public class BlackjackGame extends GameBase {
     private void runDealerTurn() {
         dealerHidden = false;
         while (handValue(dealerHand) < 17) {
-            dealerHand.add(drawCard());
+            dealerHand.add(deck.draw());
         }
         evaluateResult();
     }
@@ -500,8 +520,8 @@ public class BlackjackGame extends GameBase {
         if (state == GameState.FINISHED) return;
         state = GameState.FINISHED;
         stopTickTask();
-        String open = player.getOpenInventory().getTitle();
-        if (TITLE.equals(open) || BET_TITLE.equals(open)) player.closeInventory();
+        InventoryHolder open = player.getOpenInventory().getTopInventory().getHolder();
+        if (open instanceof MainHolder || open instanceof BetHolder) player.closeInventory();
         plugin.getGameManager().removeBlackjackGame(player);
     }
 
@@ -515,50 +535,67 @@ public class BlackjackGame extends GameBase {
         });
     }
 
-    // ── Card logic ─────────────────────────────────────────────────────────
+    // ── Card / hand logic ───────────────────────────────────────────────────
 
-    private int drawCard() { return new Random().nextInt(13) + 1; } // 1=A, 11=J, 12=Q, 13=K
+    private int cardValue(Card card) { return card.rank().baseValue(); }
 
-    private int cardValue(int card) {
-        if (card == 1) return 11;
-        if (card >= 11) return 10;
-        return card;
-    }
-
-    private int handValue(List<Integer> hand) {
+    private int handValue(List<Card> hand) {
         int val = 0, aces = 0;
-        for (int c : hand) {
-            if (c == 1) { aces++; val += 11; } else if (c >= 11) val += 10; else val += c;
+        for (Card c : hand) {
+            if (c.rank() == Card.Rank.ACE) aces++;
+            val += cardValue(c);
         }
         while (val > 21 && aces > 0) { val -= 10; aces--; }
         return val;
     }
 
-    private boolean isBlackjack(List<Integer> hand) {
+    private boolean isBlackjack(List<Card> hand) {
         return hand.size() == 2 && handValue(hand) == 21;
     }
 
-    private String cardName(int v) {
-        return switch (v) { case 1 -> "A"; case 11 -> "J"; case 12 -> "Q"; case 13 -> "K";
-                             default -> String.valueOf(v); };
+    /**
+     * Renders {@code hand} centered within {@code slots} instead of left-packed, so a 2-card
+     * hand sits in the middle of the row (matching the reference layout) and naturally spreads
+     * to fill the row as more cards are drawn. When {@code dealer} is true, the first card is
+     * drawn face-down while {@link #dealerHidden} is set.
+     */
+    private void placeHandCentered(int[] slots, List<Card> hand, boolean dealer) {
+        int count = Math.min(hand.size(), slots.length);
+        int start = (slots.length - count) / 2;
+        for (int i = 0; i < count; i++) {
+            boolean faceDown = dealer && i == 0 && dealerHidden;
+            mainInv.setItem(slots[start + i], faceDown ? makeCardBack() : makeCard(hand.get(i)));
+        }
     }
 
     // ── Item factories ─────────────────────────────────────────────────────
 
-    private ItemStack makeCard(int v) {
-        ItemStack item = new ItemStack(cardMaterial(v));
+    private ItemStack makeCard(Card card) {
+        ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta  = item.getItemMeta();
-        meta.setDisplayName("§f§l" + cardName(v));
-        meta.setLore(List.of("§7Value: §e" + cardValue(v)));
+        meta.setCustomModelData(card.customModelData());
+        meta.setDisplayName("§f§l" + card.shortName());
+        meta.setLore(List.of("§7" + card.suit().displayName(), "§7Value: §e" + cardValue(card)));
         item.setItemMeta(meta);
         return item;
     }
 
-    private ItemStack makeHidden() {
-        ItemStack item = new ItemStack(Material.BLUE_STAINED_GLASS_PANE);
+    private ItemStack makeCardBack() {
+        ItemStack item = new ItemStack(Material.PAPER);
         ItemMeta meta  = item.getItemMeta();
+        meta.setCustomModelData(Card.BACK_CUSTOM_MODEL_DATA);
         meta.setDisplayName("§b§l?");
         meta.setLore(List.of("§7Face-down card"));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack makeActionButton(int customModelData, String name, List<String> lore) {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta  = item.getItemMeta();
+        meta.setCustomModelData(customModelData);
+        meta.setDisplayName(name);
+        meta.setLore(lore);
         item.setItemMeta(meta);
         return item;
     }
@@ -578,18 +615,6 @@ public class BlackjackGame extends GameBase {
         meta.setDisplayName("§0");
         item.setItemMeta(meta);
         return item;
-    }
-
-    private Material cardMaterial(int v) {
-        return switch (v) {
-            case 1  -> Material.DIAMOND;          case 2  -> Material.LAPIS_LAZULI;
-            case 3  -> Material.EMERALD;           case 4  -> Material.REDSTONE;
-            case 5  -> Material.GOLD_NUGGET;       case 6  -> Material.IRON_NUGGET;
-            case 7  -> Material.QUARTZ;            case 8  -> Material.PRISMARINE_CRYSTALS;
-            case 9  -> Material.AMETHYST_SHARD;    case 10 -> Material.COPPER_INGOT;
-            case 11 -> Material.IRON_INGOT;        case 12 -> Material.GOLD_INGOT;
-            case 13 -> Material.NETHERITE_SCRAP;   default -> Material.PAPER;
-        };
     }
 
     private String sym()     { return plugin.getConfigLoader().getCurrencySymbol(); }

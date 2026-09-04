@@ -6,6 +6,7 @@ import com.himacasino.core.ConfigLoader;
 import com.himacasino.core.DisplayManager;
 import com.himacasino.core.EconomyManager;
 import com.himacasino.core.GameManager;
+import com.himacasino.core.ResourcePackListener;
 import com.himacasino.games.blackjack.BlackjackListener;
 import com.himacasino.games.highlow.HighLowListener;
 import com.himacasino.games.horsewheel.HorseWheelListener;
@@ -58,6 +59,7 @@ public class HimaCasino extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new HighLowListener(this),     this);
         getServer().getPluginManager().registerEvents(new HorseWheelListener(this),  this);
         getServer().getPluginManager().registerEvents(new BlackjackListener(this),   this);
+        getServer().getPluginManager().registerEvents(new ResourcePackListener(this), this);
 
         getLogger().info("HimaCasino v" + getDescription().getVersion() + " が有効になりました！");
     }
