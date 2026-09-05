@@ -35,11 +35,10 @@ public class ResourcePackListener implements Listener {
         String prompt = ChatColor.translateAlternateColorCodes('&', cfg.getResourcePackPromptMessage());
         boolean force = cfg.isResourcePackForced();
 
-        if (hash != null) {
-            player.setResourcePack(url, hash, prompt, force);
-        } else {
-            player.setResourcePack(url, new byte[0], prompt, force);
-        }
+        // hash is @Nullable on this Bukkit API overload; passing new byte[0] instead of null
+        // here throws IllegalArgumentException ("hash should be 20 bytes long but was 0") on
+        // recent Paper builds when resource-pack.sha1 isn't configured.
+        player.setResourcePack(url, hash, prompt, force);
     }
 
     private byte[] parseSha1(String hex) {
