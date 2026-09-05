@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
 
 /**
  * Sends the HimaCasino resource pack (blackjack card graphics, GUI icons) to players
@@ -39,6 +40,26 @@ public class ResourcePackListener implements Listener {
         // here throws IllegalArgumentException ("hash should be 20 bytes long but was 0") on
         // recent Paper builds when resource-pack.sha1 isn't configured.
         player.setResourcePack(url, hash, prompt, force);
+    }
+
+    @EventHandler
+    public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
+        if (!plugin.getConfigLoader().isResourcePackEnabled()) return;
+
+        PlayerResourcePackStatusEvent.Status status = event.getStatus();
+        plugin.getLogger().info(String.format(
+                "[ResourcePack] %s: %s", event.getPlayer().getName(), status));
+
+        switch (status) {
+            case FAILED_DOWNLOAD -> plugin.getLogger().warning(
+                    "リソースパックのダウンロードに失敗しました。resource-pack.url がZIPファイルへの直接リンクか確認してください: "
+                            + event.getPlayer().getName());
+            case INVALID_URL -> plugin.getLogger().warning(
+                    "resource-pack.url が無効です。設定を確認してください: " + event.getPlayer().getName());
+            case DECLINED -> plugin.getLogger().warning(
+                    "プレイヤーがリソースパックを拒否しました: " + event.getPlayer().getName());
+            default -> { /* ACCEPTED / DOWNLOADED / SUCCESSFULLY_LOADED はログのみ */ }
+        }
     }
 
     private byte[] parseSha1(String hex) {
