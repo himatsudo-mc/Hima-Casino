@@ -1,0 +1,40 @@
+name: Release
+
+# Tag push (e.g. `v1.0.0`) builds the plugin jar and the resource pack zip, then
+# attaches both to a GitHub Release. This gives the resource pack a stable public
+# download URL (the release asset link) for use as `resource-pack.url` in
+# config.yml — Minecraft requires an externally reachable HTTP(S) URL, it cannot
+# be served by placing the file in a server directory.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build plugin jar
+        run: mvn -B package
+
+      - name: Build resource pack zip
+        run: ./scripts/package-resourcepack.sh
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/HimaCasino-*.jar
+            target/BlackjackResourcePack.zip
+          generate_release_notes: true

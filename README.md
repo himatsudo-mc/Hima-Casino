@@ -322,6 +322,26 @@ CustomModelData モデル一式が含まれています。配布用 ZIP は以�
 `config.yml` の `resource-pack.url` に設定して `resource-pack.enabled: true`
 にすると、プレイヤー参加時に自動配布されます。
 
+### GitHub Releases での自動配布 (推奨)
+
+Minecraft のリソースパック配布は、クライアントが HTTP(S) でダウンロードできる
+URL が必須で、サーバーの特定ディレクトリに置くだけで自動配布される仕組みは
+存在しません。自宅サーバーなどポート開放なしで手軽に URL を用意したい場合は、
+このリポジトリの `v*` タグを push すると GitHub Actions
+(`.github/workflows/release.yml`) が自動で
+
+- `mvn package` でプラグイン jar (`HimaCasino-*.jar`)
+- `./scripts/package-resourcepack.sh` でリソースパック ZIP (`BlackjackResourcePack.zip`)
+
+をビルドし、GitHub Release にアセットとして添付します。Release ページで
+ZIP のリンクを右クリック→「リンクのアドレスをコピー」した URL を、
+そのまま `config.yml` の `resource-pack.url` に設定してください。
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ### カード CustomModelData 割当
 
 ベースアイテムは `PAPER` です。
