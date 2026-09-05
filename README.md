@@ -322,6 +322,15 @@ CustomModelData モデル一式が含まれています。配布用 ZIP は以�
 `config.yml` の `resource-pack.url` に設定して `resource-pack.enabled: true`
 にすると、プレイヤー参加時に自動配布されます。
 
+### CustomModelData の定義形式
+
+Minecraft 1.21.4 でアイテムモデルの指定方式が刷新され、旧方式
+(`assets/minecraft/models/item/paper.json` の `overrides`) は 1.21.4 以降の
+クライアントでは無視されます。そのため新方式の
+`assets/minecraft/items/paper.json` (`range_dispatch`) を併記しており、
+**カードやボタンを追加・変更する際は両方の更新が必要**です。旧方式のみを
+更新するとカードが無地の紙アイテムのまま表示されます。
+
 ### GitHub Releases での自動配布 (推奨)
 
 Minecraft のリソースパック配布は、クライアントが HTTP(S) でダウンロードできる
@@ -336,6 +345,10 @@ URL が必須で、サーバーの特定ディレクトリに置くだけで自�
 をビルドし、GitHub Release にアセットとして添付します。Release ページで
 ZIP のリンクを右クリック→「リンクのアドレスをコピー」した URL を、
 そのまま `config.yml` の `resource-pack.url` に設定してください。
+
+> **注意**: リポジトリが Private の場合、Release アセットの URL は認証なしでは
+> 404 になります。Minecraft クライアントは認証情報を送れないため配布できません。
+> GitHub Release を配布元にする場合はリポジトリを Public にしてください。
 
 ```bash
 git tag v1.0.0
