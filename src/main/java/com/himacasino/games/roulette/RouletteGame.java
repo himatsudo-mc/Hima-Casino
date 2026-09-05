@@ -151,7 +151,9 @@ public class RouletteGame extends GameBase {
     // ── Entity spawning ────────────────────────────────────────────────────
 
     private void spawnBall() {
-        ItemStack ballItem = new ItemStack(Material.SNOWBALL);
+        // PAPER, not SNOWBALL: CustomModelData 221 is only dispatched from the
+        // resource pack's paper item definition.
+        ItemStack ballItem = new ItemStack(Material.PAPER);
         ItemMeta  bm       = ballItem.getItemMeta();
         bm.setCustomModelData(221);
         ballItem.setItemMeta(bm);
