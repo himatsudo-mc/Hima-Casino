@@ -1,6 +1,10 @@
 {
   "providers": [
     {
+      "type": "reference",
+      "id": "minecraft:default"
+    },
+    {
       "type": "space",
       "advances": {
         "": -8,
