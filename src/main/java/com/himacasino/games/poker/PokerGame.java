@@ -84,8 +84,12 @@ public class PokerGame extends GameBase {
     private static final String GLYPH_PANEL       = "\uF803"; // 176x142 felt/wood table image
 
     private static Component buildTitle(String legacyLabel) {
+        // Both parts hang off an empty parent so the label does NOT inherit the panel's
+        // font: himacasino:default only defines the panel glyphs, so ordinary characters
+        // rendered with it come out as missing-glyph boxes.
         Component panel = Component.text(GLYPH_SPACE_LEFT8 + GLYPH_PANEL + GLYPH_SPACE_BACK).font(PANEL_FONT);
-        return panel.append(LegacyComponentSerializer.legacySection().deserialize(legacyLabel));
+        Component label = LegacyComponentSerializer.legacySection().deserialize(legacyLabel);
+        return Component.empty().append(panel).append(label);
     }
 
     private static final int GUI_SIZE = 54;
