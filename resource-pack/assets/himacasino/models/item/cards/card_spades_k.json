@@ -1,7 +1,7 @@
 {
   "parent": "item/generated",
   "textures": {
-    "layer0": "himacasino:item/cards/card_hearts_K"
+    "layer0": "himacasino:item/cards/card_spades_k"
   },
   "display": {
     "gui": {

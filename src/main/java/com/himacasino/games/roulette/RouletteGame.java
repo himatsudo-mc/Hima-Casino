@@ -10,7 +10,6 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
@@ -151,12 +150,9 @@ public class RouletteGame extends GameBase {
     // ── Entity spawning ────────────────────────────────────────────────────
 
     private void spawnBall() {
-        // PAPER, not SNOWBALL: CustomModelData 221 is only dispatched from the
-        // resource pack's paper item definition.
-        ItemStack ballItem = new ItemStack(Material.PAPER);
-        ItemMeta  bm       = ballItem.getItemMeta();
-        bm.setCustomModelData(221);
-        ballItem.setItemMeta(bm);
+        // Stays a plain SNOWBALL: the resource pack ships no roulette_ball texture,
+        // so dispatching CustomModelData 221 would render a missing-texture sprite.
+        ItemStack ballItem = new ItemStack(Material.SNOWBALL);
         ballDisplay = tableCenter.getWorld().spawn(
                 tableCenter.clone().add(BALL_RADIUS_MAX, 0.15, 0), ItemDisplay.class, d -> {
             d.setItemStack(ballItem);
