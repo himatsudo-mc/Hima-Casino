@@ -139,7 +139,7 @@ Vault が導入されていない場合は通貨機能が無効になります�
 ### ブラックジャック
 
 `/casino blackjack` で開始。54 スロット (6 行) のインベントリ UI でプレイ。
-カード・ボタンはリソースパック (`BlackjackResourcePack.zip`) の CustomModelData
+カード・ボタンはリソースパック (`hima-casino-resource-pack.zip`) の CustomModelData
 グラフィックで表示されます (未適用の場合は無地の紙アイテムとして表示されます)。
 
 #### GUI レイアウト
@@ -301,7 +301,7 @@ poker:
 # リソースパック (ブラックジャック/ポーカーのカードグラフィック配布用)
 resource-pack:
   enabled: false
-  url: ""              # BlackjackResourcePack.zip のホスト先 URL
+  url: ""              # hima-casino-resource-pack.zip のホスト先 URL
   sha1: ""              # 任意: ZIP の SHA-1 ハッシュ
   prompt-message: "&aHimaCasino のカードグラフィックを表示するには、リソースパックの適用をお願いします。"
   force: false          # true でリソースパック拒否時に切断
@@ -311,14 +311,14 @@ resource-pack:
 
 ## リソースパック
 
-`resource-pack/` フォルダにブラックジャックのカード・ボタン・GUI 背景の
+`resource-pack/` フォルダにブラックジャック/ポーカーのカード・ボタン・GUI 背景の
 CustomModelData モデル一式が含まれています。配布用 ZIP は以下でビルドできます。
 
 ```bash
 ./scripts/package-resourcepack.sh
 ```
 
-`target/BlackjackResourcePack.zip` が生成されます。任意の URL にホストし、
+`target/hima-casino-resource-pack.zip` が生成されます。任意の URL にホストし、
 `config.yml` の `resource-pack.url` に設定して `resource-pack.enabled: true`
 にすると、プレイヤー参加時に自動配布されます。
 
@@ -340,7 +340,7 @@ URL が必須で、サーバーの特定ディレクトリに置くだけで自�
 (`.github/workflows/release.yml`) が自動で
 
 - `mvn package` でプラグイン jar (`HimaCasino-*.jar`)
-- `./scripts/package-resourcepack.sh` でリソースパック ZIP (`BlackjackResourcePack.zip`)
+- `./scripts/package-resourcepack.sh` でリソースパック ZIP (`hima-casino-resource-pack.zip`)
 
 をビルドし、GitHub Release にアセットとして添付します。Release ページで
 ZIP のリンクを右クリック→「リンクのアドレスをコピー」した URL を、

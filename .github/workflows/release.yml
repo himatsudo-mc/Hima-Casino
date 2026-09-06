@@ -36,5 +36,5 @@ jobs:
         with:
           files: |
             target/HimaCasino-*.jar
-            target/BlackjackResourcePack.zip
+            target/hima-casino-resource-pack.zip
           generate_release_notes: true
