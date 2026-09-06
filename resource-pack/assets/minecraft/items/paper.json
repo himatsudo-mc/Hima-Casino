@@ -12,7 +12,7 @@
         "threshold": 1,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_A"
+          "model": "himacasino:item/cards/card_spades_a"
         }
       },
       {
@@ -82,28 +82,28 @@
         "threshold": 11,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_J"
+          "model": "himacasino:item/cards/card_spades_j"
         }
       },
       {
         "threshold": 12,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_Q"
+          "model": "himacasino:item/cards/card_spades_q"
         }
       },
       {
         "threshold": 13,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_K"
+          "model": "himacasino:item/cards/card_spades_k"
         }
       },
       {
         "threshold": 14,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_A"
+          "model": "himacasino:item/cards/card_hearts_a"
         }
       },
       {
@@ -173,28 +173,28 @@
         "threshold": 24,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_J"
+          "model": "himacasino:item/cards/card_hearts_j"
         }
       },
       {
         "threshold": 25,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_Q"
+          "model": "himacasino:item/cards/card_hearts_q"
         }
       },
       {
         "threshold": 26,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_K"
+          "model": "himacasino:item/cards/card_hearts_k"
         }
       },
       {
         "threshold": 27,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_A"
+          "model": "himacasino:item/cards/card_diamonds_a"
         }
       },
       {
@@ -264,28 +264,28 @@
         "threshold": 37,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_J"
+          "model": "himacasino:item/cards/card_diamonds_j"
         }
       },
       {
         "threshold": 38,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_Q"
+          "model": "himacasino:item/cards/card_diamonds_q"
         }
       },
       {
         "threshold": 39,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_K"
+          "model": "himacasino:item/cards/card_diamonds_k"
         }
       },
       {
         "threshold": 40,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_A"
+          "model": "himacasino:item/cards/card_clubs_a"
         }
       },
       {
@@ -355,21 +355,21 @@
         "threshold": 50,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_J"
+          "model": "himacasino:item/cards/card_clubs_j"
         }
       },
       {
         "threshold": 51,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_Q"
+          "model": "himacasino:item/cards/card_clubs_q"
         }
       },
       {
         "threshold": 52,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_K"
+          "model": "himacasino:item/cards/card_clubs_k"
         }
       },
       {
@@ -401,94 +401,10 @@
         }
       },
       {
-        "threshold": 201,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_1"
-        }
-      },
-      {
-        "threshold": 202,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_2"
-        }
-      },
-      {
-        "threshold": 203,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_3"
-        }
-      },
-      {
-        "threshold": 204,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_4"
-        }
-      },
-      {
-        "threshold": 205,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_5"
-        }
-      },
-      {
-        "threshold": 206,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_6"
-        }
-      },
-      {
-        "threshold": 207,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_number_7"
-        }
-      },
-      {
-        "threshold": 211,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_frame_0"
-        }
-      },
-      {
-        "threshold": 212,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_frame_1"
-        }
-      },
-      {
-        "threshold": 213,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/slot_frame_2"
-        }
-      },
-      {
-        "threshold": 220,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/roulette_wheel"
-        }
-      },
-      {
-        "threshold": 221,
-        "model": {
-          "type": "minecraft:model",
-          "model": "himacasino:item/roulette_ball"
-        }
-      },
-      {
         "threshold": 301,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_A"
+          "model": "himacasino:item/cards/card_spades_a"
         }
       },
       {
@@ -558,28 +474,28 @@
         "threshold": 311,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_J"
+          "model": "himacasino:item/cards/card_spades_j"
         }
       },
       {
         "threshold": 312,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_Q"
+          "model": "himacasino:item/cards/card_spades_q"
         }
       },
       {
         "threshold": 313,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_spades_K"
+          "model": "himacasino:item/cards/card_spades_k"
         }
       },
       {
         "threshold": 401,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_A"
+          "model": "himacasino:item/cards/card_hearts_a"
         }
       },
       {
@@ -649,28 +565,28 @@
         "threshold": 411,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_J"
+          "model": "himacasino:item/cards/card_hearts_j"
         }
       },
       {
         "threshold": 412,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_Q"
+          "model": "himacasino:item/cards/card_hearts_q"
         }
       },
       {
         "threshold": 413,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_hearts_K"
+          "model": "himacasino:item/cards/card_hearts_k"
         }
       },
       {
         "threshold": 501,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_A"
+          "model": "himacasino:item/cards/card_diamonds_a"
         }
       },
       {
@@ -740,28 +656,28 @@
         "threshold": 511,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_J"
+          "model": "himacasino:item/cards/card_diamonds_j"
         }
       },
       {
         "threshold": 512,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_Q"
+          "model": "himacasino:item/cards/card_diamonds_q"
         }
       },
       {
         "threshold": 513,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_diamonds_K"
+          "model": "himacasino:item/cards/card_diamonds_k"
         }
       },
       {
         "threshold": 601,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_A"
+          "model": "himacasino:item/cards/card_clubs_a"
         }
       },
       {
@@ -831,21 +747,21 @@
         "threshold": 611,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_J"
+          "model": "himacasino:item/cards/card_clubs_j"
         }
       },
       {
         "threshold": 612,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_Q"
+          "model": "himacasino:item/cards/card_clubs_q"
         }
       },
       {
         "threshold": 613,
         "model": {
           "type": "minecraft:model",
-          "model": "himacasino:item/cards/card_clubs_K"
+          "model": "himacasino:item/cards/card_clubs_k"
         }
       },
       {
