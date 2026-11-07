@@ -1,6 +1,6 @@
 # HimaCasino
 
-Purpur 1.21.1 向け Display Entity ベースのカジノプラグイン。  
+Purpur 26.3 向け Display Entity ベースのカジノプラグイン。  
 スロット・ルーレット・HIGH & LOW・HORSE WHEEL・ブラックジャック・ポーカー (Sow) の 6 種類のゲームを収録。
 
 ---
@@ -9,9 +9,9 @@ Purpur 1.21.1 向け Display Entity ベースのカジノプラグイン。
 
 | 項目 | バージョン |
 |------|-----------|
-| サーバー | Purpur 1.21.1 (Paper 互換) |
-| API バージョン | 1.21 |
-| Java | 21 以上 |
+| サーバー | Purpur 26.3 (Paper 互換) |
+| API バージョン | 26.3 |
+| Java | 25 以上 |
 | 依存プラグイン (任意) | Vault + 経済プラグイン |
 
 Vault が導入されていない場合は通貨機能が無効になりますが、ゲーム自体は動作します。
