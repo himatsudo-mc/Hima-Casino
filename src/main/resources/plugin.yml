@@ -1,8 +1,8 @@
 name: HimaCasino
 version: 1.0.0
 main: com.himacasino.HimaCasino
-api-version: '1.21'
-description: Purpur 1.21.1 向け Display Entity ベースのカジノプラグイン
+api-version: '26.3'
+description: Purpur 26.3 向け Display Entity ベースのカジノプラグイン
 authors: [HimaCasino]
 
 softdepend:
