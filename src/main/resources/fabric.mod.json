@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "hima-casino",
+  "version": "${version}",
+  "name": "HimaCasino",
+  "description": "スロット・ルーレット・ハイロー・ホースホイール・ブラックジャック・ポーカーのカジノ mod。プレイ画面は Chromium (MCEF) で描画します。",
+  "authors": [
+    "himatsudo"
+  ],
+  "license": "MIT",
+  "icon": "assets/himacasino/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.himacasino.HimaCasino"
+    ],
+    "client": [
+      "com.himacasino.client.HimaCasinoClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "mcef": "*",
+    "common-economy-api": "*"
+  }
+}

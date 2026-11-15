@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>Roulette</title>
+<link rel="stylesheet" href="casino.css"><script src="casino.js"></script>
+<style>
+  .layout { flex: 1; display: flex; gap: 16px; padding: 16px 18px; }
+  .board { flex: 1; display: flex; flex-direction: column; gap: 10px; justify-content: center; }
+  .grid { display: grid; grid-template-columns: 58px repeat(12, 1fr); grid-template-rows: repeat(3, 74px); gap: 3px; }
+  .cell {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 22px; color: #fff; border-radius: 8px; cursor: pointer;
+    border: 2px solid rgba(255,255,255,.65); background: #222;
+    transition: transform .06s, filter .1s;
+  }
+  .cell:hover { filter: brightness(1.25); transform: scale(1.04); z-index: 2; }
+  .cell.red   { background: linear-gradient(180deg, #e04a4a, #a82424); }
+  .cell.black { background: linear-gradient(180deg, #34343a, #131316); }
+  .cell.green { background: linear-gradient(180deg, #2fc46b, #1a7a43); }
+  .cell.out   { background: rgba(0,0,0,.35); font-size: 17px; }
+  .cell.cov   { box-shadow: 0 0 0 3px rgba(242,193,78,.55); }
+  .cell.has   { box-shadow: 0 0 0 3px var(--gold), 0 0 12px rgba(242,193,78,.7); }
+  .coin {
+    position: absolute; right: -4px; top: -7px; min-width: 24px; height: 24px; padding: 0 5px;
+    border-radius: 12px; background: radial-gradient(circle at 35% 30%, #fff6c6, var(--gold) 55%, var(--gold-dark));
+    color: #3a2800; font-size: 12px; font-weight: 900; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,.6);
+  }
+  .outside { display: grid; gap: 3px; }
+  .outside.d { grid-template-columns: repeat(3, 1fr); }
+  .outside.o { grid-template-columns: repeat(6, 1fr); }
+  .outside .cell { height: 62px; }
+  .side { width: 210px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+  .side .chips { flex-wrap: wrap; gap: 10px; }
+  .side .chip { width: 56px; height: 56px; font-size: 15px; }
+</style></head>
+<body><script>
+const body = Casino.frame('ROULETTE', 'ヨーロピアン 0–36');
+body.style.display = 'flex';
+Casino.onState(function (s) {
+  Casino.setBalance(s);
+  body.innerHTML = '';
+  const layout = Casino.el('div', 'layout');
+  const board = Casino.el('div', 'board');
+
+  function cell(label, cls, onclick, amount) {
+    const c = Casino.el('div', 'cell ' + cls, label);
+    c.onclick = onclick;
+    if (amount && amount >= 0.5) {
+      c.classList.add('has');
+      c.appendChild(Casino.el('div', 'coin', Casino.fmt(amount)));
+    }
+    return c;
+  }
+  const isRed = n => s.reds.includes(n);
+  const covered = n => s.covered.includes(n);
+
+  // 数字グリッド (0 + 3 行 × 12 列)
+  const grid = Casino.el('div', 'grid');
+  const zero = cell('0', 'green', () => Casino.send({ a: 'bet', kind: 'number', n: 0 }), s.numbers['0']);
+  if (!s.numbers['0'] && covered(0)) zero.classList.add('cov');
+  zero.style.gridRow = '1 / span 3';
+  grid.appendChild(zero);
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 12; col++) {
+      const n = col * 3 + (3 - row);
+      const c = cell(n, isRed(n) ? 'red' : 'black', () => Casino.send({ a: 'bet', kind: 'number', n: n }), s.numbers[String(n)]);
+      if (!s.numbers[String(n)] && covered(n)) c.classList.add('cov'); // 分配ベットでカバーされている数字
+      grid.appendChild(c);
+    }
+  }
+  board.appendChild(grid);
+
+  // ダース
+  const dz = Casino.el('div', 'outside d');
+  dz.style.marginLeft = '61px';
+  [['1st 12', 1], ['2nd 12', 2], ['3rd 12', 3]].forEach(([l, n]) =>
+    dz.appendChild(cell(l + ' <small style="opacity:.7;font-size:12px">2:1</small>', 'out', () => Casino.send({ a: 'bet', kind: 'dozen', n: n }), s.outside['dozen' + n])));
+  board.appendChild(dz);
+
+  // 外側ベット
+  const out = Casino.el('div', 'outside o');
+  out.style.marginLeft = '61px';
+  out.appendChild(cell('1–18', 'out', () => Casino.send({ a: 'bet', kind: 'low' }), s.outside.low));
+  out.appendChild(cell('EVEN', 'out', () => Casino.send({ a: 'bet', kind: 'even' }), s.outside.even));
+  out.appendChild(cell('RED', 'red', () => Casino.send({ a: 'bet', kind: 'red' }), s.colors.red));
+  out.appendChild(cell('BLACK', 'black', () => Casino.send({ a: 'bet', kind: 'black' }), s.colors.black));
+  out.appendChild(cell('ODD', 'out', () => Casino.send({ a: 'bet', kind: 'odd' }), s.outside.odd));
+  out.appendChild(cell('19–36', 'out', () => Casino.send({ a: 'bet', kind: 'high' }), s.outside.high));
+  board.appendChild(out);
+
+  board.appendChild(Casino.el('div', 'hint',
+    '数字 35:1 ／ 赤・黒 1:1 ／ EVEN・ODD・1–18・19–36 は複数の数字に自動で分配<br>最大 ' + Casino.fmt(s.max) + ' ' + s.symbol + ' ／ 画面を閉じるとベットは返金されます'));
+  layout.appendChild(board);
+
+  // 右パネル
+  const side = Casino.el('div', 'side');
+  side.appendChild(Casino.el('div', 'hand-label', 'CHIP'));
+  side.appendChild(Casino.chips(s, { selected: s.chip }));
+  side.appendChild(Casino.el('div', 'betbox', '<div class="lbl">TOTAL BET</div><div class="val">' + Casino.fmt(s.total) + '</div>'));
+  side.appendChild(Casino.btn('▶▶ SPIN', 'green', () => Casino.send({ a: 'spin' }), !s.canSpin));
+  side.appendChild(Casino.btn('CLEAR (返金)', 'dark small', () => Casino.send({ a: 'clear' }), s.total <= 0));
+  const ex = Casino.btn('退出', 'dark small', () => Casino.send({ a: 'exit' }));
+  side.appendChild(ex);
+  layout.appendChild(side);
+  body.appendChild(layout);
+});
+</script></body></html>

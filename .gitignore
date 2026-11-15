@@ -1,6 +1,8 @@
-target/
-*.class
-javac.*.args
+build/
+.gradle/
 .idea/
 *.iml
 .vscode/
+run/
+*.class
+out/

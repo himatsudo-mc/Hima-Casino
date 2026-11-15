@@ -1,0 +1,89 @@
+plugins {
+    id 'fabric-loom' version '1.13-SNAPSHOT'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository { maven { url 'https://mcef-download.cinemamod.com/repositories/releases' } }
+        filter { includeGroup 'com.cinemamod' }
+    }
+    exclusiveContent {
+        forRepository { maven { url 'https://maven.nucleoid.xyz' } }
+        filter { includeGroup 'eu.pb4' }
+    }
+}
+
+loom {
+    // src/main = common + dedicated server, src/client = client only
+    splitEnvironmentSourceSets()
+
+    mods {
+        'hima-casino' {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // Embedded Chromium for the in-game GUI (client only; installed alongside the mod)
+    modClientImplementation "com.cinemamod:mcef-fabric:${project.mcef_version}"
+
+    // Optional economy backend
+    modCompileOnly "eu.pb4:common-economy-api:${project.cea_version}"
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter-api'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.junit.platform:junit-platform-commons'
+    testImplementation 'org.junit.platform:junit-platform-engine'
+    testImplementation 'org.opentest4j:opentest4j:1.3.0'
+    testImplementation 'org.apiguardian:apiguardian-api:1.1.2'
+    testImplementation 'com.google.code.gson:gson:2.11.0'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+    it.options.encoding = 'UTF-8'
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+// 開発用: Chromium GUI を実際の Java ロジックにブラウザから直接つなぐ (Playwright での画面確認用)
+tasks.register('devServer', JavaExec) {
+    group = 'application'
+    description = 'HTML GUI + ゲームロジックの開発用サーバーを起動する (http://127.0.0.1:8765)'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.himacasino.dev.DevServer'
+    workingDir = projectDir
+    dependsOn 'testClasses'
+}

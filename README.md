@@ -1,7 +1,26 @@
 # HimaCasino
 
-Purpur 26.3 向け Display Entity ベースのカジノプラグイン。  
-スロット・ルーレット・HIGH & LOW・HORSE WHEEL・ブラックジャック・ポーカー (Sow) の 6 種類のゲームを収録。
+Fabric 用カジノ mod。**プレイ画面を Chromium (MCEF) の HTML で描画します。**
+スロット・ルーレット・HIGH & LOW・HORSE WHEEL・ブラックジャック・ポーカーの 6 種類のゲームを収録。
+
+> もとは Paper/Purpur 向けプラグインでした。Fabric mod に作り替え、Inventory GUI +
+> リソースパックの代わりに Chromium で GUI を描画するようになりました。
+
+---
+
+## 構成
+
+| ゲーム | 開始方法 | プレイ画面 |
+|--------|----------|-----------|
+| スロット | スロット看板を右クリック | 看板の数字がぐるぐる回る (従来どおり) |
+| ルーレット | `/casino roulette` / 卓を右クリック | ベット画面は Chromium、回転はワールド内の 3D 卓 |
+| HORSE WHEEL | ホイールを右クリック | ベット画面は Chromium、回転はワールド内の 3D ホイール |
+| HIGH & LOW | `/casino highlow` | Chromium |
+| ブラックジャック | `/casino blackjack` | Chromium |
+| ポーカー | `/casino poker` | Chromium |
+
+ゲームの進行・乱数・精算はすべて**サーバー側**で行います。クライアントの画面は
+サーバーが送る状態 (JSON) を描画し、ボタン操作を返すだけなので、改ざんしても結果は変えられません。
 
 ---
 
@@ -9,20 +28,42 @@ Purpur 26.3 向け Display Entity ベースのカジノプラグイン。
 
 | 項目 | バージョン |
 |------|-----------|
-| サーバー | Purpur 26.3 (Paper 互換) |
-| API バージョン | 26.3 |
-| Java | 25 以上 |
-| 依存プラグイン (任意) | Vault + 経済プラグイン |
+| Minecraft | 1.21.4 |
+| Fabric Loader | 0.16.10 以上 |
+| Fabric API | 必須 |
+| Java | 21 以上 |
+| MCEF (Chromium) | **クライアントに必須** (`2.1.6-1.21.4`) |
+| Common Economy API | サーバーに任意 (経済連携) |
 
-Vault が導入されていない場合は通貨機能が無効になりますが、ゲーム自体は動作します。
+- **サーバー**: Fabric Loader + Fabric API + HimaCasino
+- **クライアント**: Fabric Loader + Fabric API + HimaCasino + **MCEF**
+  (ランチャーで mod 一式を配布する前提です)
+- 6 ゲームのうちスロット以外は Chromium 画面を使うため、クライアントに HimaCasino と MCEF が
+  入っていないとプレイできません。その場合は案内メッセージが出ます。
+
+> MCEF の最新版は 1.21.4 までのため、Minecraft のバージョンは 1.21.4 に合わせています。
+> MCEF は初回起動時に Chromium 本体 (約 100〜200MB) をダウンロードします。
+
+### 経済 (Vault の代わり)
+
+Vault は Bukkit 専用のため使えません。代わりに [Common Economy API](https://modrinth.com/mod/common-economy-api)
+に対応しています。対応する経済 mod があれば残高を扱い、**無ければ無料モード** (残高チェック・賭け金の
+増減なし) で動作します。`config/hima-casino.json` の `economy.mode` で切り替えられます。
+
+| `economy.mode` | 動作 |
+|----------------|------|
+| `auto` (既定) | Common Economy API があれば連携、無ければ無料モード |
+| `free` | 常に無料モード |
+
+`economy.currencyId` (例: `mymod:coins`) で使う通貨を指定できます。空なら最初の口座を使います。
 
 ---
 
 ## インストール
 
-1. `HimaCasino-1.0.0.jar` を `plugins/` フォルダに配置する。
-2. サーバーを起動または `/reload` を実行する。
-3. `plugins/HimaCasino/config.yml` で各種設定を行う。
+1. サーバーの `mods/` に `hima-casino-x.y.z.jar` と Fabric API を配置する。
+2. クライアントの `mods/` に `hima-casino-x.y.z.jar`・Fabric API・MCEF を配置する。
+3. サーバーを起動する。初回に `config/hima-casino.json` が生成される。
 
 ---
 
@@ -32,418 +73,134 @@ Vault が導入されていない場合は通貨機能が無効になります�
 
 | コマンド | 説明 | 権限 |
 |----------|------|------|
-| `/casino` | ヘルプを表示 | himacasino.play |
-| `/casino help [game]` | ゲーム詳細ヘルプを表示 | himacasino.play |
-| `/casino roulette` | ルーレット UI を開く | himacasino.play |
-| `/casino highlow` | HIGH & LOW を開始 | himacasino.play |
-| `/casino blackjack` | ブラックジャックを開始 | himacasino.play |
-| `/casino poker` | ポーカー (Sow) を開始 | himacasino.play |
-| `/casino setting <1-6>` | スロットのデフォルト設定を変更 | himacasino.admin |
-| `/casino setmachine <roulette\|horsewheel>` | 注視しているブロックにマシンを登録 | himacasino.admin |
-| `/casino delmachine` | 注視しているブロックのマシンを削除 | himacasino.admin |
+| `/casino` | ヘルプを表示 | 全員 |
+| `/casino help [game]` | ゲーム詳細ヘルプを表示 | 全員 |
+| `/casino roulette` | 近くのルーレット卓で開始 | 全員 |
+| `/casino highlow` | HIGH & LOW を開始 | 全員 |
+| `/casino blackjack` | ブラックジャックを開始 | 全員 |
+| `/casino poker` | ポーカーを開始 | 全員 |
+| `/casino setting <1-6>` | スロットのデフォルト設定を変更 | OP (レベル 2) |
+| `/casino setmachine <roulette\|horsewheel>` | 注視しているブロックにマシンを登録 | OP |
+| `/casino setmachine slots [ベット額] [設定]` | 注視している**看板**をスロットにする | OP |
+| `/casino delmachine` | 注視しているブロックのマシンを削除 | OP |
+| `/casino reload` | 設定を再読み込み | OP |
 
-### ヘルプコマンド
-
-```
-/casino help slots
-/casino help roulette
-/casino help highlow
-/casino help horsewheel
-/casino help blackjack
-/casino help poker
-```
+旧プラグインの「`[slot]` と書いた看板を置く」方式は、mod では看板の文字入力イベントが
+標準で取れないため、**看板を置いてから `/casino setmachine slots` を実行する**方式に変わりました。
 
 ---
 
-## 権限
-
-| 権限ノード | 説明 | デフォルト |
-|------------|------|-----------|
-| `himacasino.play` | ゲームをプレイできる | 全員 |
-| `himacasino.admin` | 管理者コマンドを使用できる | OP のみ |
-
----
-
-## ゲーム説明
+## 各ゲーム
 
 ### スロット
+看板を右クリック。3 つのリールが順に止まります。設定 1〜6 で 7 の出現率が変わります。
 
-`[slot]` と書かれた看板を右クリックするとプレイ開始。
-
-- シンボルは 1〜7 の 7 種類
-- 3 リールが順番に停止し、組み合わせで配当が決まる
-
-| 組み合わせ | 配当 |
-|-----------|------|
-| 7-7-7 | 100x (ジャックポット) |
+| 役 | 倍率 |
+|----|------|
+| 7-7-7 | 100x |
 | 3 つ揃い (7 以外) | 10x |
 | 7 が 2 つ | 5x |
 | 7 が 1 つ | 2x |
-| 2 つ揃い | 1.5x |
-
-設定 1〜6 でシンボル 7 の出現率が変化 (`/casino setting` で変更)。
-
----
+| 2 つ揃い (7 以外) | 1.5x |
 
 ### ルーレット
+ヨーロピアン (0〜36)。チップを選んで盤面をクリックしてベットし、SPIN で回転します。
+画面は回転中に自動で閉じ、ワールド内の卓で回るホイールとボールを見られます。
+スピン前に画面を閉じるとベットは返金されます。
 
-`/casino roulette` またはルーレット台を右クリック。
-
-- ヨーロピアンスタイル (0〜36)
-- インベントリ UI でベット
-- 複数の数字に同時ベット可能
-
-| ベット種別 | 配当 |
-|-----------|------|
+| ベット | 配当 |
+|--------|------|
 | 単一数字 | 35:1 |
 | 赤 / 黒 | 1:1 |
-| 奇数 / 偶数 | 1:1 |
-
-**設置方法**: `/casino setmachine roulette` でルーレット台を登録。
-
----
+| EVEN / ODD / 1–18 / 19–36 | 1:1 (複数の数字に分配) |
+| ダース (1st/2nd/3rd 12) | 2:1 (複数の数字に分配) |
 
 ### HIGH & LOW
-
-`/casino highlow` で開始。インベントリ UI でプレイ。
-
-1. 現在のカード (1〜13) を確認
-2. 次のカードが **HIGH (高い)** か **LOW (低い)** かを選択
-3. 正解で配当、不正解でベット没収
-
-連続して正解すると配当が積み重なる。勝利倍率は `config.yml` で変更可能 (デフォルト 1.9x)。
-
----
+ディーラーのカードより大きい方を、伏せられた 2 枚から選びます。勝てば `highlow.winMultiplier` 倍 (既定 1.9)、
+同じ数字はベット返却です。
 
 ### HORSE WHEEL
+6 色の馬にチップを積んで SPIN。縦型 24 分割ホイールが止まった色で判定します。
 
-設置されたホイールを右クリックして開始。
-
-- 縦回転するブロックホイールが常時表示
-- 上部の三角ポインターが指したマスで判定
-- 6 色の馬にコインを賭ける
-
-| 馬の色 | 倍率 |
-|-------|------|
-| 白 (WHITE) | 2x |
-| 黄 (YELLOW) | 3x |
-| 水色 (BLUE) | 5x |
-| 緑 (GREEN) | 8x |
-| 赤 (RED) | 10x |
-| 金 (GOLD) | 20x |
-
-**設置方法**: `/casino setmachine horsewheel` でホイール台を登録。
-
----
+| 馬 | 倍率 |
+|----|------|
+| 白 | 2x |
+| 黄 | 3x |
+| 青 | 5x |
+| 緑 | 8x |
+| 赤 | 10x |
+| 金 | 20x |
 
 ### ブラックジャック
+ディーラーは 17 でスタンド。ブラックジャックは 3:2、通常勝利 1:1、同点はベット返却。
+HIT / STAND / DOUBLE DOWN (最初の 2 枚のみ)。
 
-`/casino blackjack` で開始。54 スロット (6 行) のインベントリ UI でプレイ。
-カード・ボタンはリソースパック (`hima-casino-resource-pack.zip`) の CustomModelData
-グラフィックで表示されます (未適用の場合は無地の紙アイテムとして表示されます)。
-
-#### GUI レイアウト
-
-| 行 | 内容 |
-|----|------|
-| 1 行目 (0-8) | (空欄 — タイトル/ディーラー行間の余白) |
-| 2 行目 (9-17) | ディーラーの手札 (10-16 の範囲に中央寄せで配置) |
-| 3 行目 (18-26) | (空欄 — ディーラー/プレイヤー間の余白) |
-| 4 行目 (27-35) | プレイヤーの手札 (28-34 の範囲に中央寄せで配置) |
-| 5 行目 (36-44) | (空欄 — プレイヤー行/アクション行間の余白) |
-| 6 行目 (45-53) | アクションボタン: HIT=47 / STAND=49 / DOUBLE DOWN=51 (等間隔配置) |
-
-手札は 7 枠の範囲 (10-16 / 28-34) に対して常に **中央寄せ** で描画されるため、
-2 枚配布時は中央に固まり、ヒットで枚数が増えるほど左右に自然に広がります。
-1・3・5 行目をあえて空けることで各セクション間に余白を作り(タイトル直下の
-ディーラー行がヘッダーに接して見えないように、タイトル/ディーラー間にも
-余白を入れています)、背景パネルもアクション行の直後で終わるサイズにしているため、
-上部に内容が詰まって下部だけ大きく余る、といった偏りが出ないようにしています。
-
-カード・ボタンは `display.gui.scale` でそれぞれ 1.3 倍・1.2 倍に拡大表示していますが、
-これは 1 スロットの高さ (18px) を超えるサイズです。空欄の行を挟まずに隣接させると
-拡大分がタイトルバーや隣の行にはみ出して重なって見えるため、拡大表示を使う場合は
-必ず空欄行を挟む構成にしています。
-
-ディーラー/プレイヤーの合計値やベット額は、GUI タイトル
-(`Dealer: 11? You: 16 Bet: 50` のように木目タイトルのすぐ下に表示) で常時確認できます。
-バニラのインベントリタイトルは開いた後に書き換えられないため、ヒットなど数値が変わる
-操作のたびに GUI を再構築して開き直しています(参考画像のようなカード枚数に応じて
-数値が変わる表示を、ホバー不要で実現するためのトレードオフです)。
-
-背景はマス目のない角丸のダークグリーン (ラシャ) パネルで、上部が木目調フレームです。
-アイテムを置いていないスロットは空 (未設定) のままにし、その下の背景パネル画像を
-そのまま透過表示させています。実装方法は下記「GUI 背景 (カスタムフォント技法)」を
-参照してください。
-
-#### 基本ルール
-
-- カードの合計を **21** に近づけ、ディーラーに勝つ
-- カード値: A = 1 or 11、J/Q/K = 10、2〜10 = 額面通り
-- ディーラーは合計 17 以上になるまでドローし続ける
-- デッキは 52 枚をシャッフルして使用 (尽きたら自動的に再シャッフル)
-
-#### 操作
-
-| ボタン | 説明 |
-|-------|------|
-| HIT | カードを 1 枚引く |
-| STAND | ターンを終了し、ディーラーへ |
-| DOUBLE DOWN | ベットを 2 倍にして 1 枚引き、自動スタンド (最初の 2 枚のみ) |
-
-#### 配当
-
-| 結果 | 配当 |
-|------|------|
-| ブラックジャック (最初の 2 枚で 21) | 3:2 (1.5 倍獲得) |
-| 通常勝利 | 1:1 (同額獲得) |
-| タイ (プッシュ) | ベット返金 |
-| 負け | ベット没収 |
+### ポーカー
+ヘッズアップ・ファイブカードドロー vs ハウス。アンティ → 5 枚配布 → 好きな枚数を 1 回だけ交換 →
+ベッティング (BET / CHECK / CALL / FOLD) → ショーダウン。
 
 ---
 
-### ポーカー (Sow)
+## 設定 (`config/hima-casino.json`)
 
-`/casino poker` で開始。ブラックジャックと同じ 54 スロット (6 行) のインベントリ UI でプレイ。
-ヘッズアップ (1 対 1) の **ファイブカードドロー** を、ハウス (ディーラー AI) 相手に遊ぶ形式です。
-
-#### GUI レイアウト
-
-背景はブラックジャックと**全く同じ**、マス目のない角丸のダークグリーン(ラシャ)パネル + 木目フレームです
-(カスタムフォント技法によるもので、新規画像は作成せず `font/default.json` /
-`textures/font/blackjack_panel.png` をそのまま再利用しています)。行の使い方もブラックジャックの
-「余白行を挟んで手札を中央寄せ配置する」構成をそのまま踏襲しています。ポーカーの手札は最初から
-最後まで常に5枚固定(ブラックジャックのように増減しない)なので、ブラックジャックの中央寄せ計算
-(`placeHandCentered`)が5枚のときに着地する位置をそのまま固定スロットとして使っています。
-
-| 行 | 内容 |
-|----|------|
-| 1 行目 (0-8) | (空欄 — タイトル/場札行間の余白) |
-| 2 行目 (9-17) | ディーラーの5枚 (11-15 に固定配置。手札が生きている間は裏向き、ショーダウンでのみ表向き) |
-| 3 行目 (18-26) | (空欄 — 場札/手札行間の余白) |
-| 4 行目 (27-35) | 自分の5枚 (29-33 に固定配置。ドロー中はクリックで交換対象を選択可能) |
-| 5 行目 (36-44) | (空欄 — 手札行/アクション行間の余白) |
-| 6 行目 (45-53) | アクションボタン: Draw/BET=47(フェーズにより切替) / CHECK・CALL=49 / FOLD=51 |
-
-ポット額・現在のフェーズ (DRAW/BETTING)・結果は、ブラックジャックと同様にインベントリタイトル
-直下に常時表示され、状態が変わるたびに GUI を再構築して開き直しています。
-
-#### 基本ルール・進行
-
-1. アンティ (最初の賭け金) を設定して DEAL → 自分に 5 枚・ディーラーに 5 枚 (非公開) 配布
-2. **DRAW フェーズ**: 自分の手札 5 枚をクリックして交換対象を選択(0〜5枚、何度でもトグル可能) →
-   中央のボタンをクリックして**1回だけ**確定交換(選択したカードだけ山札から引き直す。0枚選択なら
-   スタンドパット)。同時にディーラーも自動で一度だけ交換する(役の強さに基づく簡易戦略: ストレート以上は
-   そのまま、ペア/トリプス等はペア部分を残して残りを交換、役なしなら J 以上の高いカードだけ残す)
-3. 交換後、**1 回のベッティング**(先に行動するのは常にプレイヤー):
-   - **BET**: チップ UI で賭け金を設定 → ディーラーが即座にコールかフォールドで応答 (リレイズなし)
-   - **CHECK**: 様子見 → ディーラーもチェックするか、ベットしてくる場合がある
-   - ディーラーがベットしてきた場合は **CALL** (コール) か **FOLD** (降りる) で応答 (再ベット不可)
-4. ベッティングが決着したら自動的にショーダウン。役 (ハイカード〜ストレートフラッシュ) を比較して勝敗を決定
-
-ディーラーの交換戦略・ベット判断は役の強さに基づく簡易 AI です (厳密なエクイティ計算は行いません)。
-ディーラーのベット額は常にプレイヤーの残高以内に収まるため、オールイン/サイドポット処理は発生しません。
-
-#### 配当
-
-| 結果 | 配当 |
-|------|------|
-| ショーダウン勝利 / ディーラーのフォールド勝利 | ポット総取り |
-| ショーダウンでタイ (チョップ) | ポットの半分を返還 |
-| フォールド / ショーダウン敗北 | 賭けた分を没収 |
-
----
-
-## 設定ファイル (config.yml)
-
-```yaml
-# 通貨の表示名 (Vault 無効時は無視)
-currency-symbol: "コイン"
-
-# スロットマシン
-slots:
-  default-setting: 1        # デフォルト設定 (1〜6)
-  min-bet: 10.0
-  max-bet: 10000.0
-  settings:
-    1:
-      weights: [30, 25, 20, 15, 5, 3, 2]   # 各シンボルの出現ウェイト
-    # 2〜6 は同様
-  payouts:
-    7-7-7: 100.0
-    3-of-a-kind: 10.0
-    two-7s: 5.0
-    one-7: 2.0
-    two-of-a-kind: 1.5
-
-# ルーレット
-roulette:
-  min-bet: 10.0
-  max-bet: 10000.0
-  spin-ticks: 200           # ホイールが回るチック数
-
-# HIGH & LOW
-highlow:
-  min-bet: 10.0
-  max-bet: 10000.0
-  win-multiplier: 1.9       # 勝利時の倍率
-
-# ブラックジャック
-blackjack:
-  min-bet: 10.0
-  max-bet: 10000.0
-
-# ポーカー (Sow)
-poker:
-  min-bet: 10.0
-  max-bet: 10000.0
-
-# リソースパック (ブラックジャック/ポーカーのカードグラフィック配布用)
-resource-pack:
-  enabled: false
-  url: ""              # hima-casino-resource-pack.zip のホスト先 URL
-  sha1: ""              # 任意: ZIP の SHA-1 ハッシュ
-  prompt-message: "&aHimaCasino のカードグラフィックを表示するには、リソースパックの適用をお願いします。"
-  force: false          # true でリソースパック拒否時に切断
+```json
+{
+  "currencySymbol": "コイン",
+  "economy": { "mode": "auto", "currencyId": "" },
+  "slots": { "defaultSetting": 1, "minBet": 10.0, "maxBet": 10000.0, "settings": { ... }, "payouts": { ... } },
+  "roulette": { "minBet": 10.0, "maxBet": 10000.0, "spinTicks": 200 },
+  "highlow": { "minBet": 10.0, "maxBet": 10000.0, "winMultiplier": 1.9 },
+  "blackjack": { "minBet": 10.0, "maxBet": 10000.0 },
+  "poker": { "minBet": 10.0, "maxBet": 10000.0 }
+}
 ```
 
+設置したマシンは `config/hima-casino-machines.json` に保存されます。
+
 ---
 
-## リソースパック
-
-`resource-pack/` フォルダにブラックジャック/ポーカーのカード・ボタン・GUI 背景の
-CustomModelData モデル一式が含まれています。配布用 ZIP は以下でビルドできます。
+## 開発
 
 ```bash
-./scripts/package-resourcepack.sh
+./gradlew build          # jar を build/libs に出力 (ユニットテスト込み)
+./gradlew test           # ゲームロジックのユニットテスト
+./gradlew runServer      # 開発用サーバー
+./gradlew runClient      # 開発用クライアント (MCEF 込み)
+./gradlew devServer      # Chromium GUI を実際のゲームロジックにブラウザから接続 (http://127.0.0.1:8765)
 ```
 
-`target/hima-casino-resource-pack.zip` が生成されます。任意の URL にホストし、
-`config.yml` の `resource-pack.url` に設定して `resource-pack.enabled: true`
-にすると、プレイヤー参加時に自動配布されます。
+`devServer` を起動して `http://127.0.0.1:8765/api/start?game=blackjack` を叩いたあと
+`http://127.0.0.1:8765/blackjack.html` を開くと、Minecraft なしで画面を確認できます
+(`game` は `blackjack` / `highlow` / `poker` / `roulette` / `horsewheel`、`free=1` で無料モード)。
 
-### CustomModelData の定義形式
-
-Minecraft 1.21.4 でアイテムモデルの指定方式が刷新され、旧方式
-(`assets/minecraft/models/item/paper.json` の `overrides`) は 1.21.4 以降の
-クライアントでは無視されます。そのため新方式の
-`assets/minecraft/items/paper.json` (`range_dispatch`) を併記しており、
-**カードやボタンを追加・変更する際は両方の更新が必要**です。旧方式のみを
-更新するとカードが無地の紙アイテムのまま表示されます。
-
-### GitHub Releases での自動配布 (推奨)
-
-Minecraft のリソースパック配布は、クライアントが HTTP(S) でダウンロードできる
-URL が必須で、サーバーの特定ディレクトリに置くだけで自動配布される仕組みは
-存在しません。自宅サーバーなどポート開放なしで手軽に URL を用意したい場合は、
-このリポジトリの `v*` タグを push すると GitHub Actions
-(`.github/workflows/release.yml`) が自動で
-
-- `mvn package` でプラグイン jar (`HimaCasino-*.jar`)
-- `./scripts/package-resourcepack.sh` でリソースパック ZIP (`hima-casino-resource-pack.zip`)
-
-をビルドし、GitHub Release にアセットとして添付します。Release ページで
-ZIP のリンクを右クリック→「リンクのアドレスをコピー」した URL を、
-そのまま `config.yml` の `resource-pack.url` に設定してください。
-
-> **注意**: リポジトリが Private の場合、Release アセットの URL は認証なしでは
-> 404 になります。Minecraft クライアントは認証情報を送れないため配布できません。
-> GitHub Release を配布元にする場合はリポジトリを Public にしてください。
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-### カード CustomModelData 割当
-
-ベースアイテムは `PAPER` です。
-
-| ID範囲 / 値 | 割り当て内容 |
-|------------|--------------|
-| 1〜13 | スペード (A〜K) |
-| 14〜26 | ハート (A〜K) |
-| 27〜39 | ダイヤ (A〜K) |
-| 40〜52 | クラブ (A〜K) |
-| 53 | カード裏面 (ダウンカード) |
-| 100 | HIT ボタン (緑の丸チップ) |
-| 101 | STAND ボタン (赤の丸チップ) |
-| 102 | DOUBLE DOWN ボタン (金の丸チップ) |
-| 301〜313 | ポーカー: スペード (A〜K) |
-| 401〜413 | ポーカー: ハート (A〜K) |
-| 501〜513 | ポーカー: ダイヤ (A〜K) |
-| 601〜613 | ポーカー: クラブ (A〜K) |
-| 699 | ポーカー: カード裏面 (ダウンカード) |
-
-> **Note:** スロットマシンの数字/フレーム表示 (旧 CMD 1〜12) およびルーレットの
-> 盤面/ボール表示 (旧 CMD 20〜21) は、ブラックジャックの CMD 範囲 (1〜102) との
-> 衝突を避けるため CMD 201〜213 / 220〜221 に再割当てしています。
->
-> ポーカーのカード CMD (301〜613, 699) は仕様書の `Suit.offset`(100/200/300/400) を
-> そのまま使うとブラックジャックのボタン (100〜102) やスロットの数字表示 (201〜213) と
-> 衝突するため、300/400/500/600 系にずらしています。テクスチャ自体は新規作成せず、
-> 既存のブラックジャック用カードモデル (`himacasino:item/cards/card_*`) をそのまま
-> 参照しているため、見た目は共通です。
-
-### GUI 背景 (カスタムフォント技法)
-
-マス目のないフラットなダークグリーン (ラシャ) 背景と、上部の木目調フレームは、
-CustomModelData ではなく **カスタムフォントの bitmap プロバイダ** で実装しています
-(`assets/himacasino/font/default.json` + `textures/font/blackjack_panel.png`)。
-角丸パネル 1 枚 (176×142px、アクション行の直後で終わる高さ) をインベントリの
-タイトルに合成グリフとして埋め込み、その上に実際のスロットアイテム (カード・ボタン)
-を重ねて表示する方式です。既存のブロック・アイテムのテクスチャ (`generic_54.png` 等)
-には一切手を加えていません。
+### ディレクトリ構成
 
 ```
-[-8px 詰め] + [パネル画像グリフ] + [+168px 戻し] + [通常の色付きタイトル文字列]
+src/main/java/com/himacasino/
+  game/        ゲームロジック (Minecraft 非依存・ユニットテスト対象)
+  server/      サーバー側の配線 (セッション・ホスト・スケジューラ・看板)
+  table/       ルーレット卓・ホイールの 3D 表示 (Display エンティティ)
+  machine/     設置マシンの登録と永続化
+  economy/     Common Economy API 連携
+  command/     /casino コマンド
+  network/     サーバー⇄クライアントのパケット
+src/client/java/com/himacasino/client/
+  CasinoScreen.java   Chromium (MCEF) で HTML を描画する Screen
+  PageScheme.java     himacasino:// で mod 内の HTML を配信
+  ChromiumBridge.java JS ⇄ Java の橋渡し (cefQuery)
+src/client/resources/assets/himacasino/html/
+  *.html, casino.css, casino.js   各ゲームの画面
 ```
 
-という順で `Component` を組み立てて `createInventory` に渡しています
-(`BlackjackGame.buildTitle()`)。GUI の識別も、タイトル文字列の比較ではなく
-`MainHolder` / `BetHolder` という専用の `InventoryHolder` で行っています。
+### 仕組み
 
-> **⚠️ 実機での調整が必要です。** `font/default.json` の `ascent` (現在値: `7`) は、
-> パネル画像の垂直位置を決める値です。この値はバニラの通常テキストの ascent (7) に
-> 合わせた推定値であり、**実際の Minecraft クライアントで見た目を確認しながら
-> 調整することを前提としています**(本開発環境には実機クライアントがなく、
-> レンダリング結果を目視確認できていません)。
->
-> - パネルが低すぎる(下にずれる)→ `ascent` を大きくする
-> - パネルが高すぎる(上にずれる)→ `ascent` を小さくする
-> - パネルの横幅がズレる → `default.json` の `space` プロバイダの advance 値
->   (`-8` / `-168`) を調整する (パネル幅を変更した場合は `BlackjackGame.java` の
->   `GLYPH_SPACE_BACK` 計算 `-(176-8)` も追従させてください)
-
----
-
-## マシン管理
-
-### ルーレット台・ホイール台の設置
-
-1. 設置したいブロックを 5 ブロック以内で見つめる
-2. `/casino setmachine roulette` または `/casino setmachine horsewheel` を実行
-3. プレイヤーが右クリックするとゲームが開始される
-
-### マシンの削除
-
-1. 削除したいブロックを見つめる
-2. `/casino delmachine` を実行
-
-マシンの登録情報は `plugins/HimaCasino/machines.yml` に保存され、サーバー再起動後も維持される。
-
----
-
-## ビルド方法
-
-```bash
-mvn package
-```
-
-`target/HimaCasino-1.0.0.jar` が生成される。
+1. サーバーがゲームを開始し、状態 JSON を `UiPayload` でクライアントへ送る
+2. クライアントが `CasinoScreen` を開き、MCEF の Chromium で `himacasino://app/<game>.html` を表示
+3. ページの `window.casino.setState(state)` が状態を描画
+4. ボタン操作は `cefQuery` → `ActionPayload` でサーバーへ送られ、サーバーがゲームを進めて新しい状態を返す
 
 ---
 
 ## ライセンス
 
-MIT License
+MIT
