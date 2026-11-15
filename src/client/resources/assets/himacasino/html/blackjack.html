@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>Blackjack</title>
+<link rel="stylesheet" href="casino.css"><script src="casino.js"></script></head>
+<body><script>
+const body = Casino.frame('BLACKJACK', 'ブラックジャック 3:2');
+Casino.onState(function (s) {
+  Casino.setBalance(s);
+  body.innerHTML = '';
+  const center = Casino.el('div', 'center');
+
+  // ディーラー
+  const dealer = Casino.el('div');
+  const dv = s.dealerValue === null ? '?' : (s.dealer.length ? s.dealerValue : '');
+  dealer.appendChild(Casino.el('div', 'hand-label', 'DEALER' + (s.dealer.length ? '<b>' + dv + '</b>' : '')));
+  const dh = Casino.el('div', 'hand');
+  Casino.dealCards('dealer', s.dealer, c => Casino.card(c)).forEach(e => dh.appendChild(e));
+  dealer.appendChild(dh);
+  center.appendChild(dealer);
+
+  // 結果バナー / ヒント
+  if (s.phase === 'RESULT') {
+    const map = { WIN: ['WIN!  +' + Casino.fmt(s.payout), 'win'], BLACKJACK: ['BLACKJACK!  +' + Casino.fmt(s.payout), 'win'],
+                  PUSH: ['PUSH  ベット返却', 'push'], LOSE: ['LOSE', 'lose'] };
+    const m = map[s.result] || ['', ''];
+    center.appendChild(Casino.el('div', 'banner ' + m[1], m[0]));
+  } else if (s.phase === 'BET') {
+    center.appendChild(Casino.el('div', 'hint', 'チップを選んでベットし、DEAL で開始します<br>最小 ' + Casino.fmt(s.min) + ' / 最大 ' + Casino.fmt(s.max) + ' ' + s.symbol));
+  } else {
+    center.appendChild(Casino.el('div', 'hint', 'BET ' + Casino.fmt(s.bet) + ' ' + s.symbol));
+  }
+
+  // プレイヤー
+  const player = Casino.el('div');
+  player.appendChild(Casino.el('div', 'hand-label', 'YOU' + (s.player.length ? '<b>' + s.playerValue + '</b>' : '')));
+  const ph = Casino.el('div', 'hand');
+  Casino.dealCards('player', s.player, c => Casino.card(c)).forEach(e => ph.appendChild(e));
+  player.appendChild(ph);
+  center.appendChild(player);
+  body.appendChild(center);
+
+  // 操作エリア
+  const bar = Casino.el('div', 'bar');
+  bar.style.cssText = 'padding:14px 20px 18px;min-height:112px;flex-wrap:wrap';
+  if (s.phase === 'BET') {
+    bar.appendChild(Casino.chips(s));
+    const bb = Casino.el('div', 'betbox', '<div class="lbl">BET</div><div class="val">' + Casino.fmt(s.bet) + '</div>');
+    bar.appendChild(bb);
+    bar.appendChild(Casino.btn('CLEAR', 'dark small', () => Casino.send({ a: 'clear' })));
+    bar.appendChild(Casino.btn('▶ DEAL', 'green', () => Casino.send({ a: 'deal' }), !s.canDeal));
+  } else if (s.phase === 'PLAYING') {
+    bar.appendChild(Casino.btn('HIT', 'green', () => Casino.send({ a: 'hit' })));
+    bar.appendChild(Casino.btn('STAND', '', () => Casino.send({ a: 'stand' })));
+    bar.appendChild(Casino.btn('DOUBLE DOWN', 'red', () => Casino.send({ a: 'double' }), !s.canDouble));
+  } else {
+    bar.appendChild(Casino.btn('▶ もう一度', 'green', () => Casino.send({ a: 'again' }), !s.canAgain));
+    bar.appendChild(Casino.btn('ベット変更', '', () => Casino.send({ a: 'change' })));
+  }
+  body.appendChild(bar);
+  const ex = Casino.btn('退出', 'dark small exit', () => Casino.send({ a: 'exit' }));
+  ex.className += ' exit';
+  body.appendChild(ex);
+});
+</script></body></html>
