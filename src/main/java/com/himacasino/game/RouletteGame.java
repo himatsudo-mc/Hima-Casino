@@ -163,6 +163,13 @@ public class RouletteGame extends CasinoGame {
         table.showResult(winningNumber);
         host.sound("minecraft:block.stone.place", 1f, 1.2f);
         host.sound("minecraft:block.note_block.bell", 0.6f, 0.9f);
+        boolean won = settle();
+        host.later(won ? 140 : 120, this::finish);
+    }
+
+    /** 結果を精算する (1 回だけ)。当たりなら true。 */
+    private boolean settle() {
+        phase = Phase.DONE;
 
         boolean red = isRed(winningNumber);
         String col = winningNumber == 0 ? "§a" : (red ? "§c" : "§8");
@@ -173,17 +180,15 @@ public class RouletteGame extends CasinoGame {
         for (var e : colorBets.entrySet()) {
             if (winningNumber != 0 && e.getKey().equals("red") == red) winnings += e.getValue() * 2;
         }
-        phase = Phase.DONE;
         if (winnings > 0) {
             payout(totalBet, winnings / totalBet);
             host.sound("minecraft:entity.player.levelup", 1f, 1f);
             host.effect("win");
-            host.later(140, this::finish);
-        } else {
-            host.message(String.format("§cまた挑戦してね！ §e%.0f %s §cを失いました。", totalBet, sym()));
-            host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
-            host.later(120, this::finish);
+            return true;
         }
+        host.message(String.format("§cまた挑戦してね！ §e%.0f %s §cを失いました。", totalBet, sym()));
+        host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
+        return false;
     }
 
     @Override
@@ -197,6 +202,9 @@ public class RouletteGame extends CasinoGame {
             // スピン前に画面を閉じた/退出した場合は返金
             if (host.economyEnabled()) host.deposit(totalBet);
             host.message(String.format("§7ルーレットを終了しました。§e%.0f %s §7を返金します。", totalBet, sym()));
+        } else if (phase == Phase.SPINNING) {
+            // 回転中に切断/サーバー停止: 結果は確定済みなので、演出を待たずに精算する
+            settle();
         }
         table.reset();
         table.clearCoins();

@@ -8,45 +8,33 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
 
-/** クライアント側エントリーポイント: サーバーの指示で Chromium GUI を開閉する。 */
+/**
+ * クライアント側エントリーポイント: サーバーの指示で Chromium GUI を開閉する。
+ * このクラスは MCEF のクラスを直接参照しない (MCEF 未導入でもクラッシュしないように)。
+ */
 public class HimaCasinoClient implements ClientModInitializer {
+
+    private static final boolean MCEF_PRESENT = FabricLoader.getInstance().isModLoaded("mcef");
 
     @Override
     public void onInitializeClient() {
         ClientPlayNetworking.registerGlobalReceiver(UiPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
-            client.execute(() -> handle(client, payload));
+            client.execute(() -> {
+                if (MCEF_PRESENT) {
+                    ScreenRouter.handle(client, payload);
+                } else if ("open".equals(payload.kind())) {
+                    reject(client, "§cこのゲームの画面には MCEF (Chromium) が必要です。ランチャーの mod 一覧を確認してください。");
+                }
+            });
         });
     }
 
-    private static void handle(MinecraftClient client, UiPayload p) {
-        switch (p.kind()) {
-            case "open" -> open(client, p);
-            case "state" -> {
-                if (client.currentScreen instanceof CasinoScreen s && s.game().equals(p.game())) s.pushState(p.json());
-            }
-            case "close" -> {
-                if (client.currentScreen instanceof CasinoScreen s) s.closeFromServer();
-            }
-            default -> {}
+    /** 画面を開けないことを伝え、サーバー側のゲームを終了させる (ベットは返金される) */
+    static void reject(MinecraftClient client, String legacyMessage) {
+        if (client.player != null) client.player.sendMessage(Text.literal(legacyMessage), false);
+        if (ClientPlayNetworking.canSend(ActionPayload.ID)) {
+            ClientPlayNetworking.send(new ActionPayload("{\"a\":\"__closed\"}"));
         }
-    }
-
-    private static void open(MinecraftClient client, UiPayload p) {
-        if (client.currentScreen instanceof CasinoScreen s && s.game().equals(p.game())) {
-            s.pushState(p.json());
-            return;
-        }
-        if (!FabricLoader.getInstance().isModLoaded("mcef") || !ChromiumBridge.available()) {
-            if (client.player != null) {
-                client.player.sendMessage(Text.literal("§cChromium (MCEF) の準備ができていません。MCEF が導入され、初回ダウンロードが完了しているか確認してください。"), false);
-            }
-            // サーバー側のゲームを終了させる (ベットは返金される)
-            if (ClientPlayNetworking.canSend(ActionPayload.ID)) {
-                ClientPlayNetworking.send(new ActionPayload("{\"a\":\"__closed\"}"));
-            }
-            return;
-        }
-        client.setScreen(new CasinoScreen(p.game(), p.json()));
     }
 }

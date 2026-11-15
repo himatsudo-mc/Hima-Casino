@@ -3,7 +3,6 @@ package com.himacasino.game;
 import com.google.gson.JsonObject;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * スロットマシン (看板表示)。専用 GUI は無く、看板の数字がぐるぐる回る従来の見た目のまま。
@@ -33,6 +32,8 @@ public class SlotsGame extends CasinoGame {
     private final boolean[] stopped = new boolean[REELS];
     private int tick = 0;
     private double lastMultiplier = 0;
+    private boolean charged = false;
+    private boolean settled = false;
 
     public SlotsGame(GameHost host, double bet, int setting, SignView sign) {
         super(host);
@@ -58,6 +59,7 @@ public class SlotsGame extends CasinoGame {
             finish();
             return;
         }
+        charged = true;
         sign.setLines("§e? §7| §e? §7| §e?", "§cPlaying...");
         host.message("§6§l╔══════════════════╗");
         host.message(String.format("§6§l║  §eSLOTS §7(設定 %d)  §6§l║", setting));
@@ -93,6 +95,17 @@ public class SlotsGame extends CasinoGame {
 
     private void evaluate() {
         if (isFinished()) return;
+        boolean won = settle();
+        host.later(won ? 120 : 100, this::finish);
+    }
+
+    /** 結果を精算する (1 回だけ)。当たりなら true。 */
+    private boolean settle() {
+        if (settled || !charged) return false;
+        settled = true;
+        for (int i = 0; i < REELS; i++) {
+            if (!stopped[i]) { results[i] = rollSymbol(); stopped[i] = true; } // 途中終了時は残りのリールも抽選
+        }
         host.message("§6結果: " + reelStr(false));
         double mult = multiplier();
         lastMultiplier = mult;
@@ -101,13 +114,12 @@ public class SlotsGame extends CasinoGame {
             sign.setLines(reelStr(false), "§aYou Win! +" + shortNum(bet * mult));
             host.sound("minecraft:entity.player.levelup", 1f, 1f);
             host.effect("win");
-            host.later(120, this::finish);
-        } else {
-            host.message(String.format("§cハズレ… §e%.0f %s §cを失いました。", bet, sym()));
-            sign.setLines(reelStr(false), "§cTry Again!");
-            host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
-            host.later(100, this::finish);
+            return true;
         }
+        host.message(String.format("§cハズレ… §e%.0f %s §cを失いました。", bet, sym()));
+        sign.setLines(reelStr(false), "§cTry Again!");
+        host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
+        return false;
     }
 
     double multiplier() {
@@ -146,6 +158,7 @@ public class SlotsGame extends CasinoGame {
 
     @Override
     protected void onFinish() {
+        settle(); // 回転中に切断/サーバー停止しても精算する
         String reel = results[0] > 0 ? reelStr(false) : "§7? §7| §7? §7| §7?";
         sign.setLines(reel, "§aClick to Start!");
     }
@@ -166,8 +179,4 @@ public class SlotsGame extends CasinoGame {
         return String.format("%.0f", v);
     }
 
-    /** 設定 → 配当テーブルを引くためのヘルパー (テスト用) */
-    static Map<String, Double> defaultPayouts(GameHost host) {
-        return host.config().slots.payouts;
-    }
 }

@@ -30,6 +30,9 @@ public class HorseWheelGame extends CasinoGame {
     private double lastBet = 0;
     private int resultHorse = -1;
     private double lastWin = 0;
+    /** 回転中の未精算の結果 (切断時の即時精算用) */
+    private int pendingHorse = -1;
+    private double pendingWinnerBet = 0;
 
     public HorseWheelGame(GameHost host, WheelView wheel) {
         super(host);
@@ -89,27 +92,14 @@ public class HorseWheelGame extends CasinoGame {
         lastBet = total;
         int targetSeg = host.random().nextInt(WHEEL_ORDER.length);
         int horse = WHEEL_ORDER[targetSeg];
-        double winnerBet = bets[horse];
+        pendingHorse = horse;
+        pendingWinnerBet = bets[horse];
         host.message("§d§l══ HORSE WHEEL ══ §d§l▶ SPIN!");
         host.closeUi();
 
         wheel.startSpin(targetSeg, () -> {
             if (isFinished()) return;
-            resultHorse = horse;
-            double winnings = winnerBet > 0 ? winnerBet * MULTIPLIERS[horse] : 0;
-            lastWin = winnings;
-            host.message("§d§l══ HORSE WHEEL RESULT ══");
-            host.message("§7結果: " + HORSE_COLORS[horse] + "§l" + HORSE_NAMES[horse]
-                    + String.format(" §7(×%.0f)", MULTIPLIERS[horse]));
-            if (winnings > 0) {
-                if (host.economyEnabled()) host.deposit(winnings);
-                host.message(String.format("§a§l★ WIN! §a+%.0f %s", winnings, sym()));
-                host.sound("minecraft:entity.player.levelup", 1f, 1f);
-                host.effect("win");
-            } else {
-                host.message(String.format("§c§l✗ LOSE! §c-%.0f %s", lastBet, sym()));
-                host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
-            }
+            settle();
             // ホイールが止まって 4 秒後にベット画面を開き直す
             host.later(80, () -> {
                 if (isFinished()) return;
@@ -118,6 +108,36 @@ public class HorseWheelGame extends CasinoGame {
                 open();
             });
         });
+    }
+
+    /** 回転結果を精算する (1 回だけ) */
+    private void settle() {
+        if (pendingHorse < 0) return;
+        int horse = pendingHorse;
+        double winnerBet = pendingWinnerBet;
+        pendingHorse = -1;
+        pendingWinnerBet = 0;
+        resultHorse = horse;
+        double winnings = winnerBet > 0 ? winnerBet * MULTIPLIERS[horse] : 0;
+        lastWin = winnings;
+        host.message("§d§l══ HORSE WHEEL RESULT ══");
+        host.message("§7結果: " + HORSE_COLORS[horse] + "§l" + HORSE_NAMES[horse]
+                + String.format(" §7(×%.0f)", MULTIPLIERS[horse]));
+        if (winnings > 0) {
+            if (host.economyEnabled()) host.deposit(winnings);
+            host.message(String.format("§a§l★ WIN! §a+%.0f %s", winnings, sym()));
+            host.sound("minecraft:entity.player.levelup", 1f, 1f);
+            host.effect("win");
+        } else {
+            host.message(String.format("§c§l✗ LOSE! §c-%.0f %s", lastBet, sym()));
+            host.sound("minecraft:block.note_block.bass", 1f, 0.5f);
+        }
+    }
+
+    @Override
+    protected void onFinish() {
+        // 回転中に切断/サーバー停止: 結果は確定済みなので、演出を待たずに精算する
+        settle();
     }
 
     @Override

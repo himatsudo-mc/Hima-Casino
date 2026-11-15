@@ -145,4 +145,41 @@ class RouletteAndWheelTest {
         g.handle("spin", null);
         assertEquals(HorseWheelGame.Phase.BET, g.phase());
     }
+
+    @Test
+    void shutdownWhileSpinningStillPaysOutOnce() {
+        FakeHost host = new FakeHost();
+        StubTable t = new StubTable();
+        RouletteGame g = new RouletteGame(host, t);
+        g.open();
+        g.handle("chip", FakeHost.args("v", 10));
+        for (int n = 0; n <= 36; n++) g.handle("bet", kind("number", n)); // 必ず 1 つ当たる
+        g.handle("spin", null);
+        assertEquals(1000 - 370, host.balance);
+        g.shutdown(); // 演出中に切断
+        assertEquals(1000 - 370 + 360, host.balance);
+        t.landed.run(); // 後から着地しても二重払いしない
+        assertEquals(1000 - 370 + 360, host.balance);
+    }
+
+    @Test
+    void horseWheelShutdownWhileSpinningPaysOutOnce() {
+        FakeHost host = new FakeHost();
+        final Runnable[] done = new Runnable[1];
+        final int[] seg = new int[1];
+        HorseWheelGame g = new HorseWheelGame(host, (s, r) -> { seg[0] = s; done[0] = r; });
+        g.open();
+        for (int h = 0; h < 6; h++) {
+            JsonObject sel = new JsonObject(); sel.addProperty("i", h);
+            g.handle("select", sel);
+            g.handle("chip", FakeHost.args("v", 10));
+        }
+        g.handle("spin", null);
+        g.shutdown();
+        int horse = HorseWheelGame.WHEEL_ORDER[seg[0]];
+        double expected = 940 + 10 * HorseWheelGame.MULTIPLIERS[horse];
+        assertEquals(expected, host.balance, 0.001);
+        done[0].run();
+        assertEquals(expected, host.balance, 0.001);
+    }
 }

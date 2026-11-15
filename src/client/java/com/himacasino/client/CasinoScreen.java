@@ -25,7 +25,7 @@ public class CasinoScreen extends Screen {
     private final String game;
     private MCEFBrowser browser;
     private String latestState;
-    private boolean pageReady;
+    private volatile boolean pageReady;
     private boolean closedByServer;
 
     public CasinoScreen(String game, String initialState) {
